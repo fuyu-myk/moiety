@@ -1,0 +1,19 @@
+[package]
+name = "moiety-cli"
+description = "Command-line front end for moiety"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "moiety"
+path = "src/main.rs"
+
+[dependencies]
+moiety.workspace = true
+moiety-draw.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

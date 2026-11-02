@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["crates/moiety-core", "crates/moiety", "crates/moiety-draw", "crates/moiety-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["myk"]
+
+[workspace.dependencies]
+moiety-core = { path = "crates/moiety-core", version = "0.1.0" }
+moiety = { path = "crates/moiety", version = "0.1.0" }
+moiety-draw = { path = "crates/moiety-draw", version = "0.1.0" }
+serde = { version = "=1.0.229", features = ["derive"] }
+toml = "=1.1.8"
+thiserror = "=2.0.21"
+anyhow = "=1.0.104"
+proptest = "=1.12.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"

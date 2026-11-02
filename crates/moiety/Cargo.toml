@@ -1,0 +1,16 @@
+[package]
+name = "moiety"
+description = "Condensed organic formula parser with ambiguity reporting, an abbreviation dictionary and an inverse writer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+moiety-core.workspace = true
+serde.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
