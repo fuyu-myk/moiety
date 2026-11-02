@@ -22,7 +22,7 @@ pub mod conformance;
 pub mod dictionary;
 pub mod writer;
 
-pub use dictionary::{default_dictionary, LoadError};
+pub use dictionary::{LoadError, default_dictionary};
 pub use moiety_core::*;
 
 /// Reads a formula with the bundled dictionary and default options.

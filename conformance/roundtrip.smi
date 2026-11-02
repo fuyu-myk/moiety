@@ -1,0 +1,207 @@
+# Round-trip corpus: well-known molecules within the v1 input language.
+# Each line is a SMILES string followed by a name. The runner writes each
+# molecule as a condensed formula with the inverse writer, reads it back,
+# and compares canonical SMILES of the rank 1 reading.
+
+# Alkanes and alkyl halides
+C methane
+CC ethane
+CCC propane
+CCCC butane
+CC(C)C isobutane
+CCCCC pentane
+CC(C)CC isopentane
+CC(C)(C)C neopentane
+CCCCCC hexane
+CCCCCCC heptane
+CCCCCCCC octane
+CC(C)CC(C)(C)C isooctane
+CCCCCCCCCC decane
+CCl chloromethane
+ClCCl dichloromethane
+ClC(Cl)Cl chloroform
+ClC(Cl)(Cl)Cl carbon-tetrachloride
+CCBr bromoethane
+CC(C)I 2-iodopropane
+FC(F)(F)C(F)(F)F hexafluoroethane
+ClCCCl 1,2-dichloroethane
+CC(Cl)Cl 1,1-dichloroethane
+BrCC(Br)CBr 1,2,3-tribromopropane
+CC(C)(C)Cl tert-butyl-chloride
+
+# Alkenes and alkynes
+C=C ethylene
+C=CC propene
+C=CC=C butadiene
+CC=CC 2-butene
+C=C(C)C isobutylene
+C=CCl vinyl-chloride
+C=CC#N acrylonitrile
+C#C acetylene
+CC#C propyne
+CC#CC 2-butyne
+C=C=C allene
+CC(C)=C(C)C tetramethylethylene
+C=CCCl allyl-chloride
+C=CC=O acrolein
+
+# Alcohols and ethers
+CO methanol
+CCO ethanol
+CCCO 1-propanol
+CC(C)O isopropanol
+CCCCO 1-butanol
+CC(C)(C)O tert-butanol
+OCCO ethylene-glycol
+OCC(O)CO glycerol
+CC(O)CO propylene-glycol
+COC dimethyl-ether
+CCOCC diethyl-ether
+COCCOC dimethoxyethane
+CC(C)(C)OC methyl-tert-butyl-ether
+C=CCO allyl-alcohol
+C#CCO propargyl-alcohol
+OCC(F)(F)F trifluoroethanol
+CCOCCO 2-ethoxyethanol
+
+# Carbonyl compounds
+C=O formaldehyde
+CC=O acetaldehyde
+CCC=O propanal
+CC(C)=O acetone
+CCC(C)=O butanone
+CC(=O)CC(C)=O acetylacetone
+O=CC=O glyoxal
+O=CCC=O malondialdehyde
+ClC(Cl)=O phosgene
+CC(Cl)=O acetyl-chloride
+O=CC(Cl)(Cl)Cl chloral
+CC(C)C=O isobutyraldehyde
+
+# Acids, esters, amides
+OC=O formic-acid
+CC(=O)O acetic-acid
+CCC(=O)O propionic-acid
+CC(C)C(=O)O isobutyric-acid
+CCCC(=O)O butyric-acid
+OC(=O)C(=O)O oxalic-acid
+OC(=O)CC(=O)O malonic-acid
+OC(=O)CCC(=O)O succinic-acid
+OC(=O)CCCCC(=O)O adipic-acid
+CC(O)C(=O)O lactic-acid
+OCC(=O)O glycolic-acid
+CC(=O)C(=O)O pyruvic-acid
+OC(=O)C(F)(F)F trifluoroacetic-acid
+OC(=O)CCl chloroacetic-acid
+C=CC(=O)O acrylic-acid
+C=C(C)C(=O)O methacrylic-acid
+COC=O methyl-formate
+COC(C)=O methyl-acetate
+CCOC(C)=O ethyl-acetate
+CCOC(=O)CC(=O)OCC diethyl-malonate
+CC(=O)CC(=O)OCC ethyl-acetoacetate
+C=C(C)C(=O)OC methyl-methacrylate
+CC(=O)OC(C)=O acetic-anhydride
+NC=O formamide
+CC(N)=O acetamide
+CN(C)C=O dimethylformamide
+CC(=O)N(C)C dimethylacetamide
+NC(N)=O urea
+COC(=O)OC dimethyl-carbonate
+CCOC(N)=O ethyl-carbamate
+
+# Nitrogen compounds
+N ammonia
+CN methylamine
+CCN ethylamine
+CNC dimethylamine
+CN(C)C trimethylamine
+CCN(CC)CC triethylamine
+NCCN ethylenediamine
+NCCO ethanolamine
+OCCN(CCO)CCO triethanolamine
+CC#N acetonitrile
+N#CCC#N malononitrile
+N#CC(=O)O cyanoacetic-acid
+NCC(=O)O glycine
+CC(N)C(=O)O alanine
+CC(C)C(N)C(=O)O valine
+CC(C)CC(N)C(=O)O leucine
+OCC(N)C(=O)O serine
+NCCCCC(N)C(=O)O lysine
+NC(CC(=O)O)C(=O)O aspartic-acid
+C[N+](=O)[O-] nitromethane
+CC[N+](=O)[O-] nitroethane
+CN=NC azomethane
+CNN methylhydrazine
+CN(C)N(C)C tetramethylhydrazine
+CON methoxyamine
+NO hydroxylamine
+
+# Sulfur, phosphorus, silicon, boron
+S hydrogen-sulfide
+CS methanethiol
+CSC dimethyl-sulfide
+CSSC dimethyl-disulfide
+CS(C)=O dimethyl-sulfoxide
+CS(C)(=O)=O dimethyl-sulfone
+CS(=O)(=O)O methanesulfonic-acid
+CS(=O)(=O)Cl methanesulfonyl-chloride
+OS(=O)(=O)O sulfuric-acid
+O=S(Cl)Cl thionyl-chloride
+OCCS mercaptoethanol
+CSCCC(N)C(=O)O methionine
+NC(CS)C(=O)O cysteine
+COP(=O)(OC)OC trimethyl-phosphate
+O=P(Cl)(Cl)Cl phosphoryl-chloride
+CP(C)C trimethylphosphine
+C[Si](C)(C)Cl trimethylsilyl-chloride
+C[Si](C)(C)C tetramethylsilane
+OB(O)O boric-acid
+COB(OC)OC trimethyl-borate
+
+# Organometallics and salts
+C[Mg]Br methylmagnesium-bromide
+CCCC[Li] n-butyllithium
+CC[Zn]CC diethylzinc
+[Na]Cl sodium-chloride
+O[Na] sodium-hydroxide
+CC(=O)O[Na] sodium-acetate
+[Na+].[Cl-] sodium-chloride-ionic
+[Cu+2].[O-]S(=O)(=O)[O-] copper-sulfate
+[NH4+].[Cl-] ammonium-chloride
+CC(=O)[O-] acetate
+C[NH3+] methylammonium
+
+# Molecules with dictionary rings
+c1ccccc1C toluene
+c1ccccc1O phenol
+c1ccccc1N aniline
+c1ccccc1Cl chlorobenzene
+c1ccccc1C(=O)O benzoic-acid
+c1ccccc1C=O benzaldehyde
+c1ccccc1C(C)=O acetophenone
+c1ccccc1CO benzyl-alcohol
+c1ccccc1CCl benzyl-chloride
+c1ccccc1C=C styrene
+c1ccccc1[N+](=O)[O-] nitrobenzene
+c1ccccc1C#N benzonitrile
+c1ccccc1OC anisole
+c1ccccc1CCO phenethyl-alcohol
+c1ccccc1CC(=O)O phenylacetic-acid
+c1ccccc1C(=O)Cl benzoyl-chloride
+c1ccccc1OC(C)=O phenyl-acetate
+CC(=O)Nc1ccccc1 acetanilide
+c1ccc(cc1)Cc1ccccc1 diphenylmethane
+c1ccc(cc1)C(c1ccccc1)c1ccccc1 triphenylmethane
+OC(c1ccccc1)(c1ccccc1)c1ccccc1 triphenylmethanol
+c1ccc(cc1)P(c1ccccc1)c1ccccc1 triphenylphosphine
+O=P(c1ccccc1)(c1ccccc1)c1ccccc1 triphenylphosphine-oxide
+Cc1ccc(S(=O)(=O)Cl)cc1 tosyl-chloride
+Cc1ccc(S(=O)(=O)O)cc1 toluenesulfonic-acid
+OC1CCCCC1 cyclohexanol
+NC1CCCCC1 cyclohexylamine
+CC(C)(C)OC(=O)NCC(=O)O boc-glycine
+C[Si](C)(C)OCCO trimethylsilyloxyethanol
+CC(C)(C)[Si](C)(C)OC tbs-methyl-ether
+OCC1CC1 cyclopropylmethanol

@@ -128,7 +128,13 @@ impl Lattice {
         let mut paths = Vec::new();
         let mut current = Vec::new();
         let mut truncated = false;
-        self.walk(self.span.start, &mut current, &mut paths, limit, &mut truncated);
+        self.walk(
+            self.span.start,
+            &mut current,
+            &mut paths,
+            limit,
+            &mut truncated,
+        );
         (paths, truncated)
     }
 
@@ -254,7 +260,13 @@ fn prior(kind: EdgeKind) -> i32 {
 fn element_edges(rest: &str, at: impl Fn(usize) -> Span, edges: &mut Vec<Edge>) {
     let bytes = rest.as_bytes();
     if let Some(element) = Element::from_symbol(&rest[..1]) {
-        edges.push(edge(at(1), EdgeKind::Element { element, folded: false }));
+        edges.push(edge(
+            at(1),
+            EdgeKind::Element {
+                element,
+                folded: false,
+            },
+        ));
     }
     if matches!(bytes[0], b'D' | b'T') {
         edges.push(edge(at(1), EdgeKind::IsotopeHydrogen));
@@ -264,12 +276,28 @@ fn element_edges(rest: &str, at: impl Fn(usize) -> Span, edges: &mut Vec<Edge>) 
     };
     if second.is_ascii_lowercase() {
         if let Some(element) = Element::from_symbol(&rest[..2]) {
-            edges.push(edge(at(2), EdgeKind::Element { element, folded: false }));
+            edges.push(edge(
+                at(2),
+                EdgeKind::Element {
+                    element,
+                    folded: false,
+                },
+            ));
         }
     } else if second.is_ascii_uppercase() {
-        let folded = format!("{}{}", char::from(bytes[0]), char::from(second.to_ascii_lowercase()));
+        let folded = format!(
+            "{}{}",
+            char::from(bytes[0]),
+            char::from(second.to_ascii_lowercase())
+        );
         if let Some(element) = Element::from_symbol(&folded) {
-            edges.push(edge(at(2), EdgeKind::Element { element, folded: true }));
+            edges.push(edge(
+                at(2),
+                EdgeKind::Element {
+                    element,
+                    folded: true,
+                },
+            ));
         }
     }
 }
@@ -302,9 +330,7 @@ fn descriptor_len(rest: &str) -> Option<usize> {
     if body.is_empty() || !body.chars().all(allowed) {
         return None;
     }
-    inner[close + 1..]
-        .starts_with('-')
-        .then_some(close + 3)
+    inner[close + 1..].starts_with('-').then_some(close + 3)
 }
 
 fn prune(span: Span, edges: Vec<Edge>, component: &str) -> Result<Lattice, Uncovered> {
@@ -343,6 +369,17 @@ fn prune(span: Span, edges: Vec<Edge>, component: &str) -> Result<Lattice, Uncov
 }
 
 fn uncovered(component: &str, offset: usize, stuck: usize) -> Uncovered {
+    let bytes = component.as_bytes();
+    let mut word = stuck;
+    while word > 0 && bytes[word - 1].is_ascii_lowercase() {
+        word -= 1;
+    }
+    let inside_word = bytes.get(stuck).is_some_and(u8::is_ascii_lowercase);
+    let stuck = if inside_word && word > 0 && bytes[word - 1].is_ascii_uppercase() {
+        word - 1
+    } else {
+        stuck
+    };
     let rest = &component[stuck..];
     let mut chars = rest.char_indices();
     let first = chars.next().map(|(_, c)| c);
@@ -441,9 +478,19 @@ mod tests {
     fn keeps_both_readings_of_co() {
         let l = lattice("COCl2");
         let cobalt = Element::from_symbol("Co").unwrap();
-        assert!(l.edges().iter().any(|e| e.kind == EdgeKind::Element { element: cobalt, folded: true }));
+        assert!(l.edges().iter().any(|e| e.kind
+            == EdgeKind::Element {
+                element: cobalt,
+                folded: true
+            }));
         assert_eq!(l.paths(10).0.len(), 2);
-        assert_eq!(l.regions(), &[Region { span: Span::new(0, 2), kind: RegionKind::Segmentation }]);
+        assert_eq!(
+            l.regions(),
+            &[Region {
+                span: Span::new(0, 2),
+                kind: RegionKind::Segmentation
+            }]
+        );
     }
 
     #[test]
@@ -458,7 +505,10 @@ mod tests {
         let l = lattice("CH3COO-");
         assert_eq!(l.regions().last().unwrap().kind, RegionKind::Dash);
         let leading = lattice("-CH3");
-        assert!(matches!(leading.edges()[0].kind, EdgeKind::Marker(BondOrder::Single)));
+        assert!(matches!(
+            leading.edges()[0].kind,
+            EdgeKind::Marker(BondOrder::Single)
+        ));
     }
 
     #[test]
@@ -483,8 +533,28 @@ mod tests {
     #[test]
     fn reports_uncovered_input() {
         let err = lex("CH3Xy", Span::new(0, 5), &dictionary()).unwrap_err();
-        assert_eq!(err, Uncovered { span: Span::new(3, 5), looks_like_abbreviation: true });
+        assert_eq!(
+            err,
+            Uncovered {
+                span: Span::new(3, 5),
+                looks_like_abbreviation: true
+            }
+        );
         let err = lex("C$H4", Span::new(0, 4), &dictionary()).unwrap_err();
-        assert_eq!(err, Uncovered { span: Span::new(1, 2), looks_like_abbreviation: false });
+        assert_eq!(
+            err,
+            Uncovered {
+                span: Span::new(1, 2),
+                looks_like_abbreviation: false
+            }
+        );
+        let err = lex("FmocNH2", Span::new(0, 7), &dictionary()).unwrap_err();
+        assert_eq!(
+            err,
+            Uncovered {
+                span: Span::new(0, 4),
+                looks_like_abbreviation: true
+            }
+        );
     }
 }

@@ -131,6 +131,7 @@ A charged atom's valence follows its charge:
 - No bond joins two metals.
 - Transition metals (groups 3 to 11), lanthanides, actinides and every element with atomic number 104 or more bond only to heteroatoms: never to carbon and never to hydrogen. This is what keeps the cobalt reading of `CH3COOH` from surviving while the cobalt chloride reading of `COCl2` does.
 - An aromatic atom from a dictionary fragment takes only single bonds from outside its fragment.
+- Nitrogen reaches valence 5 only with a double bond to oxygen, which the charge convention then rewrites as `[N+]-[O-]`.
 - A neutral atom using more than its lowest valence, such as sulfur in a sulfone or nitrogen in a nitro group, forms multiple bonds only to oxygen, and at most double ones. This keeps the expanded octet for `S=O`, `P=O` and `N=O` and stops it from inventing `S#S` or `N#N` bonds.
 
 ### 5.3 Free valence
@@ -150,6 +151,8 @@ Atoms inside a parenthesized branch are not pushed on the outer stack. Atoms cre
 ### 6.2 Units
 
 **Atom `X`.** Create `X` with each allowed valence in turn. If a host exists, bond it to `X`. Otherwise `X` starts the structure. Push `X`.
+
+**Hydrogen.** A hydrogen, with or without a count, bonds only to an open atom of the unit written immediately before it; it never steps back further. `H2NOH` is hydroxylamine, not an amine oxide with the last hydrogen on nitrogen.
 
 **Subscripted atom `X n`, n of 2 or more.** A count on an atom is always a subscript: R1 applies to groups and abbreviations, not to atoms.
 
@@ -197,7 +200,7 @@ A carbon atom with a count of 2 or more, such as `C2H5` or `C6H6`, carries no co
 
 The degree of unsaturation of `Cn Hm` with `k` neighbouring units is `(2n + 2 - m - k) / 2`.
 
-A component that is written as a molecular formula (every element appears once, no groups, bonds, abbreviations or charges, at least two elements) and has no reading is also `Underdetermined` with reason `MolecularFormula`. `CH4O` and `H2SO4` fall here.
+A component that is written as a molecular formula and has no reading is also `Underdetermined` with reason `MolecularFormula`. Written as a molecular formula means: atoms only, every element once, no groups, bonds, abbreviations or charges, and either three or more elements or a count on an atom other than hydrogen. `CH4O`, `H2SO4` and `N2O` fall here; `CH3` does not, and is invalid for its open valence.
 
 ### 6.7 Markers and charges
 
@@ -264,6 +267,7 @@ A reading's score is the sum of:
 - the priors of every lattice edge it used (section 3.3);
 - 0 for a chain and -1 for a pendant at an R1 fork;
 - 0 for the preferred role of a trailing `-` and -1 for the other. Attachment is preferred when the last element symbol before the `-`, skipping `H` and digits, is carbon. Charge is preferred otherwise;
+- 0 for the preferred reading of a count written just before a trailing sign and -1 for the other. The count is preferably a subscript when it follows `H`, as in `CH2-`, and a charge magnitude otherwise, as in `Fe2+`;
 - -1 for every single bond the assembly made between two atoms of N, O, S and Se, so that `CH3SOCH3` ranks the sulfoxide above the sulfenate ester;
 - -1 for a salt reading under R5.
 

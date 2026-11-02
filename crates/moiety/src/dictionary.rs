@@ -83,7 +83,12 @@ pub fn extend(base: &Dictionary, text: &str) -> Result<Dictionary, LoadError> {
 
 fn add_entries(dictionary: &mut Dictionary, entries: Vec<EntryFile>) -> Result<(), LoadError> {
     for entry in entries {
-        dictionary.insert(Entry::new(&entry.name, &entry.smiles, entry.spellings, entry.reversed)?)?;
+        dictionary.insert(Entry::new(
+            &entry.name,
+            &entry.smiles,
+            entry.spellings,
+            entry.reversed,
+        )?)?;
     }
     Ok(())
 }
@@ -117,7 +122,10 @@ mod tests {
             smiles = "*c1ccccn1"
             spellings = ["2-Pyr"]
         "#;
-        assert!(matches!(extend(default_dictionary(), extra), Err(LoadError::Entry(_))));
+        assert!(matches!(
+            extend(default_dictionary(), extra),
+            Err(LoadError::Entry(_))
+        ));
         let fixed = extra.replace("2-Pyr", "Pyr2");
         let dictionary = extend(default_dictionary(), &fixed).unwrap();
         assert_eq!(dictionary.name(), "moiety-default");
@@ -127,8 +135,14 @@ mod tests {
 
     #[test]
     fn rejects_malformed_files() {
-        assert!(matches!(load("[dictionary]\nname = 1"), Err(LoadError::Toml(_))));
+        assert!(matches!(
+            load("[dictionary]\nname = 1"),
+            Err(LoadError::Toml(_))
+        ));
         let bad = "[dictionary]\nname = \"x\"\nversion = \"1\"\n[[entry]]\nname = \"x\"\nsmiles = \"*C(\"\nspellings = [\"X\"]\n";
-        assert!(matches!(load(bad), Err(LoadError::Entry(DictionaryError::Smiles { .. }))));
+        assert!(matches!(
+            load(bad),
+            Err(LoadError::Entry(DictionaryError::Smiles { .. }))
+        ));
     }
 }

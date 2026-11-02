@@ -73,12 +73,14 @@ impl Unit {
 }
 
 impl Tree {
-    /// Whether the component is written as a molecular formula: atoms only, each element once.
+    /// Whether the component is written as a molecular formula: atoms only, each
+    /// element once, and either three elements or a count on an atom other than hydrogen.
     pub fn is_formula_shaped(&self) -> bool {
         if self.multiplier != 1 || self.lead.is_some() || self.tail != Tail::None {
             return false;
         }
         let mut seen = Vec::new();
+        let mut heavy_count = false;
         for item in &self.seq.items {
             let UnitKind::Atom { element, .. } = item.unit.kind else {
                 return false;
@@ -86,9 +88,10 @@ impl Tree {
             if item.bond.is_some() || seen.contains(&element) {
                 return false;
             }
+            heavy_count |= element != Element::H && item.unit.count() > 1;
             seen.push(element);
         }
-        seen.len() >= 2
+        seen.len() >= 3 || (seen.len() == 2 && heavy_count)
     }
 }
 
@@ -330,10 +333,7 @@ impl Parser<'_> {
                             .push((Code::MixedBrackets, open.span.cover(edge.span)));
                     }
                     self.pos += 1;
-                    Ok(UnitKind::Group {
-                        bond,
-                        seq,
-                    })
+                    Ok(UnitKind::Group { bond, seq })
                 }
                 _ if seq.items.is_empty() => Err(Self::unexpected(edge)),
                 _ => Err(Self::unclosed(open)),
@@ -343,11 +343,7 @@ impl Parser<'_> {
     }
 
     fn unclosed(open: Edge) -> SyntaxError {
-        Self::error(
-            Code::UnclosedGroup,
-            open.span,
-            "this group is never closed",
-        )
+        Self::error(Code::UnclosedGroup, open.span, "this group is never closed")
     }
 }
 
@@ -373,7 +369,10 @@ mod tests {
         let tree = &all[0];
         assert_eq!(tree.seq.items.len(), 7);
         assert_eq!(tree.seq.items[0].unit.count(), 2);
-        assert!(matches!(tree.seq.items[0].unit.kind, UnitKind::Group { .. }));
+        assert!(matches!(
+            tree.seq.items[0].unit.kind,
+            UnitKind::Group { .. }
+        ));
     }
 
     #[test]
@@ -386,11 +385,20 @@ mod tests {
     #[test]
     fn reports_syntax_errors() {
         let error = trees("CH3(CH2").unwrap_err();
-        assert_eq!((error.code, error.span), (Code::UnclosedGroup, Span::new(3, 4)));
+        assert_eq!(
+            (error.code, error.span),
+            (Code::UnclosedGroup, Span::new(3, 4))
+        );
         let error = trees("CH3)2").unwrap_err();
-        assert_eq!((error.code, error.span), (Code::UnmatchedClose, Span::new(3, 4)));
+        assert_eq!(
+            (error.code, error.span),
+            (Code::UnmatchedClose, Span::new(3, 4))
+        );
         assert_eq!(trees("C()H4").unwrap_err().code, Code::EmptyGroup);
-        assert_eq!(trees("CH3(CH2)0CH3").unwrap_err().code, Code::CountOutOfRange);
+        assert_eq!(
+            trees("CH3(CH2)0CH3").unwrap_err().code,
+            Code::CountOutOfRange
+        );
         assert_eq!(trees("CH3-=CH3").unwrap_err().code, Code::UnexpectedToken);
     }
 

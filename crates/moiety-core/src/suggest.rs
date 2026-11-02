@@ -8,7 +8,12 @@ const DIGITS: [char; 3] = ['2', '3', '4'];
 const LETTERS: [char; 5] = ['C', 'H', 'O', 'N', 'S'];
 
 /// Searches single-character edits of `input`, nearest to `near` first, for one that reads.
-pub(crate) fn suggest(input: &str, near: Span, dictionary: &Dictionary, options: &Options) -> Option<String> {
+pub(crate) fn suggest(
+    input: &str,
+    near: Span,
+    dictionary: &Dictionary,
+    options: &Options,
+) -> Option<String> {
     let chars: Vec<(usize, char)> = input.char_indices().collect();
     if chars.is_empty() || input.len() > MAX_SUGGESTION_INPUT {
         return None;

@@ -71,7 +71,12 @@ fn options(element: Element, charge_left: i32, single: bool) -> Vec<(i8, u8)> {
             -1
         };
         if charge != 0 {
-            out.extend(element.charged_valences(charge).into_iter().map(|v| (charge, v)));
+            out.extend(
+                element
+                    .charged_valences(charge)
+                    .into_iter()
+                    .map(|v| (charge, v)),
+            );
         }
     }
     out
@@ -88,7 +93,13 @@ fn add_atom(state: &mut State, element: Element, (charge, valence): (i8, u8), sp
 }
 
 /// Creates `n` atoms of `element` in every combination of valence and charge.
-fn copies(state: &State, element: Element, n: u32, span: Span, ctx: &Ctx<'_>) -> Vec<(State, Vec<usize>)> {
+fn copies(
+    state: &State,
+    element: Element,
+    n: u32,
+    span: Span,
+    ctx: &Ctx<'_>,
+) -> Vec<(State, Vec<usize>)> {
     let mut partial = vec![(state.clone(), Vec::new())];
     for _ in 0..n {
         let mut next = Vec::new();
@@ -107,14 +118,27 @@ fn copies(state: &State, element: Element, n: u32, span: Span, ctx: &Ctx<'_>) ->
     partial
 }
 
-fn atom(state: &State, unit: &Unit, element: Element, symbol: Span, ctx: &mut Ctx<'_>) -> Vec<(State, Piece)> {
+fn atom(
+    state: &State,
+    unit: &Unit,
+    element: Element,
+    symbol: Span,
+    ctx: &mut Ctx<'_>,
+) -> Vec<(State, Piece)> {
     let n = unit.count();
     if n == 1 {
         return copies(state, element, 1, symbol, ctx)
             .into_iter()
             .map(|(s, atoms)| {
                 let head = atoms[0];
-                (s, Piece::Link { head, push: atoms, bond: None })
+                (
+                    s,
+                    Piece::Link {
+                        head,
+                        push: atoms,
+                        bond: None,
+                    },
+                )
             })
             .collect();
     }
@@ -215,7 +239,13 @@ fn abbreviation(
 }
 
 /// Copies a dictionary fragment into the state, returning its attachment atoms in bonding order.
-fn instantiate(state: &mut State, ctx: &Ctx<'_>, entry: usize, reversed: bool, symbol: Span) -> Vec<usize> {
+fn instantiate(
+    state: &mut State,
+    ctx: &Ctx<'_>,
+    entry: usize,
+    reversed: bool,
+    symbol: Span,
+) -> Vec<usize> {
     let definition = &ctx.dictionary.entries()[entry];
     let fragment = definition.fragment();
     let offset = state.atoms.len();
@@ -249,7 +279,11 @@ fn instantiate(state: &mut State, ctx: &Ctx<'_>, entry: usize, reversed: bool, s
             token: Some(symbol),
         });
     }
-    let mut sites: Vec<usize> = definition.attachments().iter().map(|a| a.atom + offset).collect();
+    let mut sites: Vec<usize> = definition
+        .attachments()
+        .iter()
+        .map(|a| a.atom + offset)
+        .collect();
     if reversed {
         sites.reverse();
     }
@@ -336,11 +370,13 @@ fn repeat_group(
 fn embed(state: &mut State, group: &State) -> usize {
     let offset = state.atoms.len();
     state.atoms.extend(group.atoms.iter().cloned());
-    state.bonds.extend(group.bonds.iter().map(|b| super::state::ABond {
-        a: b.a + offset,
-        b: b.b + offset,
-        ..b.clone()
-    }));
+    state
+        .bonds
+        .extend(group.bonds.iter().map(|b| super::state::ABond {
+            a: b.a + offset,
+            b: b.b + offset,
+            ..b.clone()
+        }));
     state.score += group.score;
     state.forks.extend(group.forks.iter().copied());
     state.forward += group.forward;

@@ -135,9 +135,7 @@ pub(crate) fn assemble(tree: &Tree, dictionary: &Dictionary) -> Assembly {
 
 /// Reads a component as a salt under rule R5: leading metals become cations and the rest an anion.
 pub(crate) fn assemble_salt(tree: &Tree, dictionary: &Dictionary) -> Assembly {
-    let metal = |item: &Item| {
-        matches!(item.unit.kind, UnitKind::Atom { element, .. } if element.is_metal())
-    };
+    let metal = |item: &Item| matches!(item.unit.kind, UnitKind::Atom { element, .. } if element.is_metal());
     let split = tree
         .seq
         .items
@@ -165,11 +163,15 @@ pub(crate) fn assemble_salt(tree: &Tree, dictionary: &Dictionary) -> Assembly {
         combos = combos
             .into_iter()
             .flat_map(|combo| {
-                element.valences().iter().filter(|&&v| v >= 1).map(move |&v| {
-                    let mut next = combo.clone();
-                    next.push(v);
-                    next
-                })
+                element
+                    .valences()
+                    .iter()
+                    .filter(|&&v| v >= 1)
+                    .map(move |&v| {
+                        let mut next = combo.clone();
+                        next.push(v);
+                        next
+                    })
             })
             .collect();
     }
@@ -195,12 +197,16 @@ pub(crate) fn assemble_salt(tree: &Tree, dictionary: &Dictionary) -> Assembly {
         for ((element, count, span), &v) in cations.iter().zip(&combo) {
             for _ in 0..*count {
                 let charge = i8::try_from(v).unwrap_or(0);
-                initial.atoms.push(AAtom::element(*element, charge, 0, *span));
+                initial
+                    .atoms
+                    .push(AAtom::element(*element, charge, 0, *span));
             }
         }
-        result
-            .derivations
-            .extend(run(&anion, &anion.seq, &mut ctx, initial).into_iter().map(derive));
+        result.derivations.extend(
+            run(&anion, &anion.seq, &mut ctx, initial)
+                .into_iter()
+                .map(derive),
+        );
         result.truncated |= ctx.truncated;
     }
     result
@@ -255,7 +261,11 @@ pub(crate) fn assemble_seq(
         let mut next = Vec::new();
         for state in &states {
             for (expanded, piece) in expand(state, &item.unit, ctx) {
-                next.extend(attach(expanded, piece, item, ctx));
+                let before = expanded.stack.len();
+                for mut attached in attach(expanded, piece, item, ctx) {
+                    attached.previous = attached.stack[before..].to_vec();
+                    next.push(attached);
+                }
             }
         }
         let unreachable = |s: &State| match allowance {
@@ -263,7 +273,12 @@ pub(crate) fn assemble_seq(
             None => false,
         };
         if let Some(dead) = next.iter().find(|s| s.has_dead_atom() || unreachable(s)) {
-            let progress = if unreachable(dead) { ctx.component_end } else { item.unit.span.end };
+            let at_end = future[i + 1] == 0;
+            let progress = if unreachable(dead) && at_end {
+                ctx.component_end
+            } else {
+                item.unit.span.end
+            };
             ctx.fail(open_valence(dead, progress));
         }
         next.retain(|s| !s.has_dead_atom() && !unreachable(s));
@@ -292,7 +307,14 @@ fn future_atoms(seq: &Seq) -> Vec<u32> {
 fn carbon_count(seq: &Seq, i: usize, in_group: bool) -> Option<(Span, Underdetermination)> {
     let unit = &seq.items[i].unit;
     let n = unit.count();
-    if !matches!(unit.kind, UnitKind::Atom { element: Element::C, .. }) || n < 2 {
+    if !matches!(
+        unit.kind,
+        UnitKind::Atom {
+            element: Element::C,
+            ..
+        }
+    ) || n < 2
+    {
         return None;
     }
     let hydrogens = seq.items.get(i + 1).and_then(|item| match item.unit.kind {
@@ -316,6 +338,20 @@ fn carbon_count(seq: &Seq, i: usize, in_group: bool) -> Option<(Span, Underdeter
 
 fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec<State> {
     let unit = &item.unit;
+    let hydrogen = matches!(
+        unit.kind,
+        UnitKind::Atom {
+            element: Element::H,
+            ..
+        }
+    );
+    let host_of = |state: &State| {
+        if hydrogen {
+            state.hydrogen_host()
+        } else {
+            state.host()
+        }
+    };
     match piece {
         Piece::Whole => {
             state.started = true;
@@ -332,7 +368,7 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                 });
                 return vec![state];
             }
-            let Some(host) = state.host() else {
+            let Some(host) = host_of(&state) else {
                 ctx.fail(no_host(&state, unit.span, ctx.component_end));
                 return Vec::new();
             };
@@ -346,13 +382,16 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                         format!("these need {} bonds", heads.len()),
                         unit.span.start,
                     )
-                    .with(state.atoms[host].group, format!("this atom has room for {room}")),
+                    .with(
+                        state.atoms[host].group,
+                        format!("this atom has room for {room}"),
+                    ),
                 );
                 return Vec::new();
             }
             let bonded = bond_all(state, host, &heads, bond);
             if bonded.is_empty() {
-                ctx.fail(bond_failure(unit.span, bond.is_some()));
+                ctx.fail(bond_failure(unit.span, bond.map(|b| b.1)));
             }
             bonded
                 .into_iter()
@@ -372,7 +411,10 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                     state.stack.extend(push);
                     return vec![state];
                 }
-                let heads: Vec<usize> = pending.iter().flat_map(|p| p.heads.iter().copied()).collect();
+                let heads: Vec<usize> = pending
+                    .iter()
+                    .flat_map(|p| p.heads.iter().copied())
+                    .collect();
                 let room = state.atoms[head].free();
                 if usize::from(room) < heads.len() {
                     let mut failure = Failure::new(
@@ -383,7 +425,8 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                         unit.span.start,
                     );
                     for p in &pending {
-                        failure = failure.with(p.span, "this group needs an atom to hang from".into());
+                        failure =
+                            failure.with(p.span, "this group needs an atom to hang from".into());
                     }
                     ctx.fail(failure);
                     return Vec::new();
@@ -391,7 +434,7 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                 let explicit = pending.iter().find_map(|p| p.bond).or(bond);
                 let bonded = bond_all(state, head, &heads, explicit);
                 if bonded.is_empty() {
-                    ctx.fail(bond_failure(unit.span, explicit.is_some()));
+                    ctx.fail(bond_failure(unit.span, explicit.map(|b| b.1)));
                 }
                 return bonded
                     .into_iter()
@@ -405,14 +448,14 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                     })
                     .collect();
             }
-            let Some(host) = state.host() else {
+            let Some(host) = host_of(&state) else {
                 ctx.fail(no_host(&state, unit.span, ctx.component_end));
                 return Vec::new();
             };
             let orders = state.orders(host, head, bond.map(|b| b.0));
             if orders.is_empty() {
                 ctx.fail(
-                    bond_failure(unit.span, bond.is_some())
+                    bond_failure(unit.span, bond.map(|b| b.1))
                         .with(state.atoms[host].group, "the atom it would bond to".into()),
                 );
                 return Vec::new();
@@ -440,7 +483,12 @@ fn count(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
-fn bond_all(state: State, center: usize, heads: &[usize], bond: Option<(BondOrder, Span)>) -> Vec<State> {
+fn bond_all(
+    state: State,
+    center: usize,
+    heads: &[usize],
+    bond: Option<(BondOrder, Span)>,
+) -> Vec<State> {
     let mut partial = vec![state];
     for &head in heads {
         let mut next = Vec::new();
@@ -475,9 +523,8 @@ fn absorb_hydrogen(state: &mut State, a: usize, b: usize) {
 }
 
 fn open_valence(state: &State, progress: usize) -> Failure {
-    let reachable = |i: usize| {
-        state.stack.contains(&i) || state.pending.iter().any(|p| p.heads.contains(&i))
-    };
+    let reachable =
+        |i: usize| state.stack.contains(&i) || state.pending.iter().any(|p| p.heads.contains(&i));
     let open = (0..state.atoms.len())
         .filter(|&i| state.atoms[i].free() > 0)
         .min_by_key(|&i| reachable(i))
@@ -510,22 +557,30 @@ fn no_host(state: &State, unit: Span, end: usize) -> Failure {
         "this group has no free valence left".into(),
         unit.start,
     )
-    .with(Span::new(unit.start, end), "but more units follow it".into())
+    .with(
+        Span::new(unit.start, end),
+        "but more units follow it".into(),
+    )
 }
 
-fn bond_failure(unit: Span, explicit: bool) -> Failure {
-    let label = if explicit {
-        "this bond is stronger than the atoms can take"
-    } else {
-        "this unit cannot bond to the atom before it"
-    };
-    Failure::new(
-        Code::BondNotPossible,
-        "these atoms cannot form this bond",
-        unit,
-        label.into(),
-        unit.start,
-    )
+fn bond_failure(unit: Span, explicit: Option<Span>) -> Failure {
+    match explicit {
+        Some(token) => Failure::new(
+            Code::BondNotPossible,
+            "these atoms cannot form this bond",
+            token,
+            "this bond is stronger than the atoms can take".into(),
+            unit.start,
+        )
+        .with(unit, "the unit it bonds".into()),
+        None => Failure::new(
+            Code::BondNotPossible,
+            "these atoms cannot form this bond",
+            unit,
+            "this unit cannot bond to the atom before it".into(),
+            unit.start,
+        ),
+    }
 }
 
 /// Resolves leading pendants that never met an anchor: the first copy anchors the rest.
@@ -582,7 +637,7 @@ fn complete(mut state: State, tree: &Tree, ctx: &mut Ctx<'_>) -> Option<State> {
             return None;
         };
         if state.orders(host, star, Some(order)).is_empty() {
-            ctx.fail(bond_failure(span, true));
+            ctx.fail(bond_failure(span, Some(span)));
             return None;
         }
         state.bond(host, star, order.valence(), Some(span));
@@ -590,6 +645,16 @@ fn complete(mut state: State, tree: &Tree, ctx: &mut Ctx<'_>) -> Option<State> {
     }
     if state.atoms.iter().any(|a| a.free() > 0) {
         ctx.fail(open_valence(&state, ctx.component_end));
+        return None;
+    }
+    if let Some(nitrogen) = pentavalent_nitrogen_without_oxo(&state) {
+        ctx.fail(Failure::new(
+            Code::BondNotPossible,
+            "nitrogen takes five bonds only with a double bond to oxygen",
+            state.atoms[nitrogen].group,
+            "this nitrogen would have five bonds".into(),
+            ctx.component_end,
+        ));
         return None;
     }
     if state.charge_left != 0 {
@@ -607,6 +672,20 @@ fn complete(mut state: State, tree: &Tree, ctx: &mut Ctx<'_>) -> Option<State> {
         return None;
     }
     Some(state)
+}
+
+fn pentavalent_nitrogen_without_oxo(state: &State) -> Option<usize> {
+    (0..state.atoms.len()).find(|&i| {
+        let atom = &state.atoms[i];
+        atom.element_kind() == Some(Element::N)
+            && atom.charge == 0
+            && atom.valence == 5
+            && !state.bonds.iter().any(|b| {
+                b.order == BondOrder::Double
+                    && b.other(i)
+                        .is_some_and(|o| state.atoms[o].element_kind() == Some(Element::O))
+            })
+    })
 }
 
 /// Builds the final molecule, folding hydrogens into implicit counts.
@@ -651,7 +730,11 @@ fn derive(state: State) -> Derivation {
     let mut bond_spans = Vec::new();
     for bond in &state.bonds {
         if let (Some(a), Some(b)) = (index[bond.a], index[bond.b]) {
-            bonds.push(Bond { a, b, order: bond.order });
+            bonds.push(Bond {
+                a,
+                b,
+                order: bond.order,
+            });
             bond_spans.push(
                 bond.token
                     .unwrap_or_else(|| state.atoms[bond.a].group.cover(state.atoms[bond.b].group)),

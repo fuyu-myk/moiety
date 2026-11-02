@@ -51,17 +51,20 @@ impl Entry {
                 entry: name.to_string(),
             });
         }
-        if let Some(bad) = spellings.iter().chain(&reversed).find(|s| !valid_spelling(s)) {
+        if let Some(bad) = spellings
+            .iter()
+            .chain(&reversed)
+            .find(|s| !valid_spelling(s))
+        {
             return Err(DictionaryError::BadSpelling {
                 entry: name.to_string(),
                 spelling: bad.clone(),
             });
         }
-        let (fragment, attachments) = split_attachments(&parsed).ok_or_else(|| {
-            DictionaryError::BadAttachment {
+        let (fragment, attachments) =
+            split_attachments(&parsed).ok_or_else(|| DictionaryError::BadAttachment {
                 entry: name.to_string(),
-            }
-        })?;
+            })?;
         Ok(Entry {
             name: name.to_string(),
             smiles: smiles.to_string(),
@@ -226,7 +229,11 @@ impl Dictionary {
                 });
             }
         }
-        match self.entries.iter().position(|other| other.name == entry.name) {
+        match self
+            .entries
+            .iter()
+            .position(|other| other.name == entry.name)
+        {
             Some(index) => Ok(Some(std::mem::replace(&mut self.entries[index], entry))),
             None => {
                 self.entries.push(entry);
@@ -311,7 +318,10 @@ impl fmt::Display for DictionaryError {
                 spelling,
                 first,
                 second,
-            } => write!(f, "spelling {spelling:?} is claimed by both {first} and {second}"),
+            } => write!(
+                f,
+                "spelling {spelling:?} is claimed by both {first} and {second}"
+            ),
         }
     }
 }
@@ -336,7 +346,13 @@ mod tests {
     fn splits_attachment_points() {
         let carboxyl = entry("carboxyl", "*C(=O)O", &["COOH"], &["HOOC"]);
         assert_eq!(carboxyl.fragment().atoms().len(), 3);
-        assert_eq!(carboxyl.attachments(), &[Attachment { atom: 0, order: BondOrder::Single }]);
+        assert_eq!(
+            carboxyl.attachments(),
+            &[Attachment {
+                atom: 0,
+                order: BondOrder::Single
+            }]
+        );
         let linker = entry("ethylene", "*CC*", &["C2H4"], &[]);
         assert_eq!(linker.attachments().len(), 2);
     }
@@ -344,23 +360,51 @@ mod tests {
     #[test]
     fn rejects_bad_entries() {
         let bad = |smiles: &str, spellings: Vec<String>| Entry::new("x", smiles, spellings, vec![]);
-        assert!(matches!(bad("*C(", vec!["X".into()]), Err(DictionaryError::Smiles { .. })));
-        assert!(matches!(bad("*C", vec![]), Err(DictionaryError::NoSpellings { .. })));
-        assert!(matches!(bad("*C", vec!["X Y".into()]), Err(DictionaryError::BadSpelling { .. })));
-        assert!(matches!(bad("*C(*)(*)", vec!["X".into()]), Err(DictionaryError::BadAttachment { .. })));
+        assert!(matches!(
+            bad("*C(", vec!["X".into()]),
+            Err(DictionaryError::Smiles { .. })
+        ));
+        assert!(matches!(
+            bad("*C", vec![]),
+            Err(DictionaryError::NoSpellings { .. })
+        ));
+        assert!(matches!(
+            bad("*C", vec!["X Y".into()]),
+            Err(DictionaryError::BadSpelling { .. })
+        ));
+        assert!(matches!(
+            bad("*C(*)(*)", vec!["X".into()]),
+            Err(DictionaryError::BadAttachment { .. })
+        ));
     }
 
     #[test]
     fn finds_spellings_and_rejects_duplicates() {
         let mut dictionary = Dictionary::new("test", "1");
-        dictionary.insert(entry("methyl", "*C", &["Me"], &[])).unwrap();
-        dictionary.insert(entry("methoxy", "*OC", &["OMe"], &["MeO"])).unwrap();
+        dictionary
+            .insert(entry("methyl", "*C", &["Me"], &[]))
+            .unwrap();
+        dictionary
+            .insert(entry("methoxy", "*OC", &["OMe"], &["MeO"]))
+            .unwrap();
         let found = dictionary.matches_at("CH3OMe", 3);
-        assert_eq!(found, vec![SpellingMatch { entry: 1, len: 3, reversed: false }]);
+        assert_eq!(
+            found,
+            vec![SpellingMatch {
+                entry: 1,
+                len: 3,
+                reversed: false
+            }]
+        );
         assert!(matches!(
             dictionary.insert(entry("other", "*C", &["Me"], &[])),
             Err(DictionaryError::DuplicateSpelling { .. })
         ));
-        assert!(dictionary.insert(entry("methyl", "*C", &["Me", "CH3"], &[])).unwrap().is_some());
+        assert!(
+            dictionary
+                .insert(entry("methyl", "*C", &["Me", "CH3"], &[]))
+                .unwrap()
+                .is_some()
+        );
     }
 }

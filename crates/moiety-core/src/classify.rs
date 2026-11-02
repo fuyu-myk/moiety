@@ -95,7 +95,12 @@ pub(crate) fn classify(
             .find_map(|s| *s)
             .unwrap_or(top_best.tree.span);
         let name = |set: &BTreeSet<Option<Span>>| {
-            if set.contains(&None) { "subscript" } else { "charge magnitude" }.to_string()
+            if set.contains(&None) {
+                "subscript"
+            } else {
+                "charge magnitude"
+            }
+            .to_string()
         };
         return vec![Site {
             class: AmbiguityClass::ChargeRepresentation,
@@ -121,7 +126,10 @@ pub(crate) fn classify(
         return forks;
     }
     if top.charges.is_disjoint(&other.charges) {
-        let span = first(&top.charges).first().copied().unwrap_or(top_best.tree.span);
+        let span = first(&top.charges)
+            .first()
+            .copied()
+            .unwrap_or(top_best.tree.span);
         return vec![Site {
             class: AmbiguityClass::ChargeRepresentation,
             span,
@@ -169,7 +177,9 @@ fn topology(top: &Candidate<'_>, other: &Candidate<'_>, text: &str) -> Site {
         let molecule: &Molecule = &c.derivation.molecule;
         let mut map = BTreeMap::new();
         for (i, atom) in molecule.atoms().iter().enumerate() {
-            let Some(element) = atom.element() else { continue };
+            let Some(element) = atom.element() else {
+                continue;
+            };
             let valence = molecule.bond_valence(i) + atom.hydrogens;
             map.entry(c.derivation.atom_spans[i])
                 .or_insert((element.symbol().to_string(), valence));

@@ -5,7 +5,7 @@ use crate::classify::{Choices, classify};
 use crate::diagnostic::{Code, Diagnostic, Label};
 use crate::dictionary::Dictionary;
 use crate::element::Element;
-use crate::lexer::{Lattice, RegionKind, lex};
+use crate::lexer::{EdgeKind, Lattice, RegionKind, lex};
 use crate::molecule::{BondOrder, Molecule};
 use crate::normalize::{Normalized, normalize};
 use crate::parser::{SyntaxError, Tail, Tree, parse};
@@ -88,16 +88,26 @@ pub fn interpret(input: &str, dictionary: &Dictionary, options: &Options) -> Int
         }
     }
     components.push(Span::new(start, text.len()));
+    if let Some(empty) = components.iter().find(|span| span.is_empty()) {
+        let at = Span::new(
+            empty.start.saturating_sub(1),
+            (empty.end + 1).min(text.len()),
+        );
+        return invalid(Diagnostic::new(
+            Code::Empty,
+            "empty component",
+            Label::new(
+                if text.is_empty() {
+                    whole
+                } else {
+                    normalized.to_original(at)
+                },
+                "nothing to read here",
+            ),
+        ));
+    }
     let mut outcomes = Vec::new();
     for span in components {
-        if span.is_empty() {
-            let at = normalized.to_original(Span::new(span.start.saturating_sub(1), span.end.max(1).min(text.len())));
-            return invalid(Diagnostic::new(
-                Code::Empty,
-                "empty component",
-                Label::new(if text.is_empty() { whole } else { at }, "nothing to read here"),
-            ));
-        }
         match component(input, &normalized, span, dictionary, options) {
             Outcome::Readings(readings) => outcomes.push(readings),
             Outcome::Underdetermined(span, reason) => {
@@ -164,7 +174,10 @@ fn component(
                 Diagnostic::new(
                     Code::UnrecognizedCharacter,
                     "unrecognized character",
-                    Label::new(original(uncovered.span), "no element, abbreviation or symbol starts here"),
+                    Label::new(
+                        original(uncovered.span),
+                        "no element, abbreviation or symbol starts here",
+                    ),
                 ),
                 input,
                 dictionary,
@@ -179,7 +192,10 @@ fn component(
         match parse(&lattice, path) {
             Ok(parsed) => trees.extend(parsed),
             Err(error) => {
-                if syntax.as_ref().is_none_or(|s| error.span.start > s.span.start) {
+                if syntax
+                    .as_ref()
+                    .is_none_or(|s| error.span.start > s.span.start)
+                {
                     syntax = Some(error);
                 }
             }
@@ -188,13 +204,20 @@ fn component(
     if trees.is_empty() {
         let error = syntax.expect("a lattice has at least one path");
         return Outcome::Invalid(Box::new(with_suggestion(
-            Diagnostic::new(error.code, title(error.code), Label::new(original(error.span), error.message)),
+            Diagnostic::new(
+                error.code,
+                title(error.code),
+                Label::new(original(error.span), error.message),
+            ),
             input,
             dictionary,
             options,
         )));
     }
-    let lexical: Vec<i32> = trees.iter().map(|t| lexical_score(&lattice, normalized.text(), t)).collect();
+    let lexical: Vec<i32> = trees
+        .iter()
+        .map(|t| lexical_score(&lattice, normalized.text(), t))
+        .collect();
     let mut candidates = Vec::new();
     let mut failure: Option<(Failure, i32)> = None;
     let mut underdetermined = None;
@@ -234,7 +257,15 @@ fn component(
             return Outcome::Underdetermined(original(at), reason);
         }
         let failure = failure.map_or_else(
-            || Failure::new(Code::OpenValence, "no reading satisfies every valence", span, "no reading".into(), span.end),
+            || {
+                Failure::new(
+                    Code::OpenValence,
+                    "no reading satisfies every valence",
+                    span,
+                    "no reading".into(),
+                    span.end,
+                )
+            },
             |(failure, _)| failure,
         );
         return Outcome::Invalid(Box::new(with_suggestion(
@@ -247,7 +278,12 @@ fn component(
     Outcome::Readings(rank(candidates, &lattice, normalized, truncated, options))
 }
 
-fn candidate<'a>(tree: &'a Tree, derivation: Derivation, lexical: i32, options: &Options) -> Candidate<'a> {
+fn candidate<'a>(
+    tree: &'a Tree,
+    derivation: Derivation,
+    lexical: i32,
+    options: &Options,
+) -> Candidate<'a> {
     let mut molecule = derivation.molecule.clone();
     let changed = apply_convention(&mut molecule, options.charge_convention);
     let conventions = changed.iter().map(|&i| derivation.atom_spans[i]).collect();
@@ -273,33 +309,59 @@ fn rank(
 ) -> Vec<Partial> {
     let mut groups: BTreeMap<String, Vec<Candidate<'_>>> = BTreeMap::new();
     for candidate in candidates {
-        groups.entry(candidate.molecule.to_smiles()).or_default().push(candidate);
+        groups
+            .entry(candidate.molecule.to_smiles())
+            .or_default()
+            .push(candidate);
     }
     let mut groups: Vec<(String, Vec<Candidate<'_>>)> = groups.into_iter().collect();
     for (_, members) in &mut groups {
         members.sort_by_key(|c| (-c.score, c.tree.path.len()));
     }
-    groups.sort_by(|(a_smiles, a), (b_smiles, b)| b[0].score.cmp(&a[0].score).then_with(|| a_smiles.cmp(b_smiles)));
+    groups.sort_by(|(a_smiles, a), (b_smiles, b)| {
+        b[0].score
+            .cmp(&a[0].score)
+            .then_with(|| a_smiles.cmp(b_smiles))
+    });
     let dropped = groups.len() > options.max_readings;
     groups.truncate(options.max_readings.max(1));
-    let choices: Vec<Choices> = groups.iter().map(|(_, members)| Choices::of(members, lattice)).collect();
+    let choices: Vec<Choices> = groups
+        .iter()
+        .map(|(_, members)| Choices::of(members, lattice))
+        .collect();
     let mut ambiguities: Vec<Vec<Ambiguity>> = vec![Vec::new(); groups.len()];
     let mut classes: Vec<Vec<AmbiguityClass>> = vec![Vec::new(); groups.len()];
-    for other in 1..groups.len() {
-        let sites = classify(
-            &choices[0],
-            &choices[other],
-            &groups[0].1[0],
-            &groups[other].1[0],
-            lattice,
-            normalized.text(),
-        );
-        for site in sites {
-            push_class(&mut classes[0], site.class);
-            push_class(&mut classes[other], site.class);
-            let span = normalized.to_original(site.span);
-            push_unique(&mut ambiguities[0], Ambiguity { class: site.class, span, choice: site.top });
-            push_unique(&mut ambiguities[other], Ambiguity { class: site.class, span, choice: site.other });
+    for first in 0..groups.len() {
+        for second in first + 1..groups.len() {
+            let sites = classify(
+                &choices[first],
+                &choices[second],
+                &groups[first].1[0],
+                &groups[second].1[0],
+                lattice,
+                normalized.text(),
+            );
+            for site in sites {
+                push_class(&mut classes[first], site.class);
+                push_class(&mut classes[second], site.class);
+                let span = normalized.to_original(site.span);
+                push_unique(
+                    &mut ambiguities[first],
+                    Ambiguity {
+                        class: site.class,
+                        span,
+                        choice: site.top,
+                    },
+                );
+                push_unique(
+                    &mut ambiguities[second],
+                    Ambiguity {
+                        class: site.class,
+                        span,
+                        choice: site.other,
+                    },
+                );
+            }
         }
     }
     groups
@@ -325,7 +387,10 @@ fn rank(
                 .map(|&(code, span)| warning(code, normalized.to_original(span)))
                 .collect();
             if truncated || dropped {
-                warnings.push(warning(Code::ReadingLimit, normalized.to_original(best.tree.span)));
+                warnings.push(warning(
+                    Code::ReadingLimit,
+                    normalized.to_original(best.tree.span),
+                ));
             }
             let d = &best.derivation;
             let direction = match (d.forward, d.backward) {
@@ -356,22 +421,38 @@ fn push_class(list: &mut Vec<AmbiguityClass>, class: AmbiguityClass) {
 }
 
 fn push_unique(list: &mut Vec<Ambiguity>, ambiguity: Ambiguity) {
-    if !list.iter().any(|a| a.class == ambiguity.class && a.span == ambiguity.span) {
+    if !list
+        .iter()
+        .any(|a| a.class == ambiguity.class && a.span == ambiguity.span)
+    {
         list.push(ambiguity);
     }
 }
 
 fn warning(code: Code, span: Span) -> Diagnostic {
     let (message, label) = match code {
-        Code::StereoIgnored => ("stereo descriptor ignored", "stereochemistry is out of scope"),
-        Code::IsotopeIgnored => ("isotope label read as hydrogen", "isotopes are out of scope"),
-        Code::MixedBrackets => ("group closed with a different bracket", "brackets of both kinds"),
+        Code::StereoIgnored => (
+            "stereo descriptor ignored",
+            "stereochemistry is out of scope",
+        ),
+        Code::IsotopeIgnored => (
+            "isotope label read as hydrogen",
+            "isotopes are out of scope",
+        ),
+        Code::MixedBrackets => (
+            "group closed with a different bracket",
+            "brackets of both kinds",
+        ),
         _ => ("reading limit reached", "later readings were dropped"),
     };
     Diagnostic::new(code, message, Label::new(span, label))
 }
 
-fn combine(outcomes: Vec<Vec<Partial>>, normalized: &Normalized, options: &Options) -> Interpretation {
+fn combine(
+    outcomes: Vec<Vec<Partial>>,
+    normalized: &Normalized,
+    options: &Options,
+) -> Interpretation {
     let mut combined: Vec<Partial> = vec![Partial {
         molecule: Molecule::new(),
         atom_spans: Vec::new(),
@@ -434,7 +515,8 @@ fn combine(outcomes: Vec<Vec<Partial>>, normalized: &Normalized, options: &Optio
         .enumerate()
         .map(|(i, mut p)| {
             if dropped && !p.warnings.iter().any(|w| w.code == Code::ReadingLimit) {
-                p.warnings.push(warning(Code::ReadingLimit, Span::new(0, 0)));
+                p.warnings
+                    .push(warning(Code::ReadingLimit, Span::new(0, 0)));
             }
             Reading {
                 molecule: p.molecule,
@@ -443,7 +525,11 @@ fn combine(outcomes: Vec<Vec<Partial>>, normalized: &Normalized, options: &Optio
                 score: p.score,
                 direction: p.direction,
                 ambiguities: p.ambiguities,
-                provenance: Provenance::new(p.atom_spans, p.bond_spans, normalized.folds().to_vec()),
+                provenance: Provenance::new(
+                    p.atom_spans,
+                    p.bond_spans,
+                    normalized.folds().to_vec(),
+                ),
                 warnings: p.warnings,
             }
         })
@@ -457,7 +543,14 @@ fn combine(outcomes: Vec<Vec<Partial>>, normalized: &Normalized, options: &Optio
 
 fn lexical_score(lattice: &Lattice, text: &str, tree: &Tree) -> i32 {
     let edges = lattice.edges();
-    let priors: i32 = tree.path.iter().map(|&i| edges[i].prior).sum();
+    let mut priors: i32 = tree.path.iter().map(|&i| edges[i].prior).sum();
+    if let [.., count, sign] = tree.path[..] {
+        let (count, sign) = (edges[count], edges[sign]);
+        if matches!(count.kind, EdgeKind::Count(_)) && matches!(sign.kind, EdgeKind::Sign(_)) {
+            let after_hydrogen = text[..count.span.start].ends_with('H');
+            priors -= i32::from(tree.count_as_charge.is_some() == after_hydrogen);
+        }
+    }
     let dash = lattice
         .regions()
         .iter()
@@ -531,15 +624,24 @@ fn to_diagnostic(failure: &Failure, normalized: &Normalized) -> Diagnostic {
     let mut diagnostic = Diagnostic::new(
         failure.code,
         failure.message.clone(),
-        Label::new(normalized.to_original(failure.primary.0), failure.primary.1.clone()),
+        Label::new(
+            normalized.to_original(failure.primary.0),
+            failure.primary.1.clone(),
+        ),
     );
     for (span, label) in &failure.secondary {
-        diagnostic = diagnostic.with_label(Label::new(normalized.to_original(*span), label.clone()));
+        diagnostic =
+            diagnostic.with_label(Label::new(normalized.to_original(*span), label.clone()));
     }
     diagnostic
 }
 
-fn with_suggestion(diagnostic: Diagnostic, input: &str, dictionary: &Dictionary, options: &Options) -> Diagnostic {
+fn with_suggestion(
+    diagnostic: Diagnostic,
+    input: &str,
+    dictionary: &Dictionary,
+    options: &Options,
+) -> Diagnostic {
     if !options.suggestions {
         return diagnostic;
     }

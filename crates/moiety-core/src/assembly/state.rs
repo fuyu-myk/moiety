@@ -58,6 +58,18 @@ pub(crate) struct ABond {
     pub token: Option<Span>,
 }
 
+impl ABond {
+    pub fn other(&self, atom: usize) -> Option<usize> {
+        if self.a == atom {
+            Some(self.b)
+        } else if self.b == atom {
+            Some(self.a)
+        } else {
+            None
+        }
+    }
+}
+
 /// Leading pendants waiting for an anchor (rule R2).
 #[derive(Clone, Debug)]
 pub(crate) struct Pending {
@@ -73,6 +85,7 @@ pub(crate) struct State {
     pub atoms: Vec<AAtom>,
     pub bonds: Vec<ABond>,
     pub stack: Vec<usize>,
+    pub previous: Vec<usize>,
     pub pending: Vec<Pending>,
     pub started: bool,
     pub charge_left: i32,
@@ -101,6 +114,15 @@ impl State {
         None
     }
 
+    /// The host for a hydrogen: the most recent open atom of the unit written just before it.
+    pub fn hydrogen_host(&self) -> Option<usize> {
+        self.previous
+            .iter()
+            .rev()
+            .copied()
+            .find(|&atom| self.atoms[atom].free() > 0)
+    }
+
     /// Bond orders that atoms `a` and `b` could form now.
     pub fn orders(&self, a: usize, b: usize, explicit: Option<BondOrder>) -> Vec<u8> {
         let (x, y) = (&self.atoms[a], &self.atoms[b]);
@@ -113,7 +135,11 @@ impl State {
         }
         for (center, partner) in [(x, y), (y, x)] {
             if raised(center) {
-                let limit = if partner.element_kind() == Some(Element::O) { 2 } else { 1 };
+                let limit = if partner.element_kind() == Some(Element::O) {
+                    2
+                } else {
+                    1
+                };
                 max = max.min(limit);
             }
         }
@@ -170,11 +196,7 @@ impl State {
                 .iter()
                 .map(|a| (a.kind, a.valence, a.used, a.charge))
                 .collect(),
-            bonds: self
-                .bonds
-                .iter()
-                .map(|b| (b.a, b.b, b.order))
-                .collect(),
+            bonds: self.bonds.iter().map(|b| (b.a, b.b, b.order)).collect(),
             stack: self.stack.clone(),
             pending: self.pending.iter().map(|p| p.heads.clone()).collect(),
             started: self.started,

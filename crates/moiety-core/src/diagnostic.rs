@@ -94,9 +94,10 @@ impl Code {
     #[must_use]
     pub const fn severity(self) -> Severity {
         match self {
-            Code::MixedBrackets | Code::StereoIgnored | Code::IsotopeIgnored | Code::ReadingLimit => {
-                Severity::Warning
-            }
+            Code::MixedBrackets
+            | Code::StereoIgnored
+            | Code::IsotopeIgnored
+            | Code::ReadingLimit => Severity::Warning,
             _ => Severity::Error,
         }
     }
@@ -214,7 +215,10 @@ impl Diagnostic {
             Severity::Error => "error",
             Severity::Warning => "warning",
         };
-        let mut out = format!("{severity}[{}]: {}\n{GUTTER}{source}\n", self.code, self.message);
+        let mut out = format!(
+            "{severity}[{}]: {}\n{GUTTER}{source}\n",
+            self.code, self.message
+        );
         for label in std::iter::once(&self.primary).chain(&self.secondary) {
             let column = column(source, label.span.start);
             let width = column_width(source, label.span).max(1);
@@ -265,7 +269,11 @@ mod tests {
 
     #[test]
     fn counts_columns_in_characters() {
-        let diagnostic = Diagnostic::new(Code::UnrecognizedCharacter, "x", Label::new(Span::new(5, 6), "here"));
+        let diagnostic = Diagnostic::new(
+            Code::UnrecognizedCharacter,
+            "x",
+            Label::new(Span::new(5, 6), "here"),
+        );
         assert!(diagnostic.render("CH₃$").contains("\n         ^ here"));
     }
 

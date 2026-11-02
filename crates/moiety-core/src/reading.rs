@@ -229,7 +229,11 @@ impl Provenance {
     /// Builds provenance from per-atom and per-bond normalized spans and the fold table.
     #[must_use]
     pub fn new(atoms: Vec<Span>, bonds: Vec<Span>, folds: Vec<Fold>) -> Self {
-        Self { atoms, bonds, folds }
+        Self {
+            atoms,
+            bonds,
+            folds,
+        }
     }
 
     /// Normalized span of every atom, by atom index.

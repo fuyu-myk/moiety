@@ -150,7 +150,7 @@ mod tests {
         assert_eq!(normalize("HC≡CH").text(), "HC#CH");
         assert_eq!(normalize("CuSO4·5H2O").text(), "CuSO4.5H2O");
         assert_eq!(normalize("SO₄²⁻").text(), "SO4^2-");
-        assert_eq!(normalize(" CH3 – CH3 ").text(), "CH3-CH3");
+        assert_eq!(normalize(" CH3 \u{2013} CH3 ").text(), "CH3-CH3");
         assert_eq!(normalize("CH3CH2OH").folds(), &[]);
     }
 
