@@ -429,7 +429,7 @@ mod tests {
         assert!(ambiguous.contains("1. O=C(Cl)Cl"));
         let invalid = describe("CH3CH3OH", &interpret("CH3CH3OH"));
         assert!(invalid.contains("error[CF0204]"));
-        let under = describe("C6H6", &interpret("C6H6"));
-        assert!(under.contains("underdetermined: molecular-formula at 0..4 (C6H6)"));
+        let under = describe("C6H12O6", &interpret("C6H12O6"));
+        assert!(under.contains("underdetermined: molecular-formula at 0..7 (C6H12O6)"));
     }
 }

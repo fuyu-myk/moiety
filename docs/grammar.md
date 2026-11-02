@@ -19,7 +19,7 @@ Out of scope, reported rather than guessed:
 
 - Stereochemistry and isotopes. Descriptors are skipped with a warning; `D` and `T` are read as hydrogen with a warning.
 - Systematic names.
-- Molecular formulas such as `C6H6`, which carry no connectivity.
+- Molecular formulas such as `C6H12O6`, which carry no connectivity.
 - Rings that the dictionary does not define.
 - Polymer repeat units such as `[CH2CH2]n`.
 
@@ -195,7 +195,7 @@ Every bond between two units gets an order. An explicit bond token fixes it. Oth
 
 ### 6.6 Carbon counts
 
-A carbon atom with a count of 2 or more, such as `C2H5` or `C6H6`, carries no connectivity. Unless a dictionary spelling covers the span, the tree is `Underdetermined`:
+A carbon atom with a count of 2 or more, such as `C2H5` or `C6H12O6`, carries no connectivity. Unless a dictionary spelling covers the span, the tree is `Underdetermined`. The bundled dictionary spells out the conventional readings of a few formulas: `C2H5` is ethyl, `C6H5` is phenyl and `C6H6` is benzene. Formulas with no single conventional reading, such as `C3H7`, stay underdetermined:
 
 - Reason `MolecularFormula` when the span is the whole component, or when its degree of unsaturation is zero.
 - Reason `UnknownRing` when it sits between other units and its degree of unsaturation is above zero, as in the `C6H4` of `CH3C6H4CH3`.

@@ -290,8 +290,8 @@ mod tests {
             )
         );
         assert!(!html.contains("<svg"));
-        assert!(fragment("C6H6").contains(
-            "<code>C6H6</code> is a molecular formula, which gives the atoms but not how they are connected."
+        assert!(fragment("C6H12O6").contains(
+            "<code>C6H12O6</code> is a molecular formula, which gives the atoms but not how they are connected."
         ));
         assert!(
             fragment("PhC6H4")

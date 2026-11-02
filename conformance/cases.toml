@@ -214,6 +214,13 @@ expect = "unique"
 smiles = ["Cc1ccccc1"]
 
 [[case]]
+id = "abbrev/benzene-formula-spelling"
+corpus = "curated"
+input = "C6H6"
+expect = "unique"
+smiles = ["c1ccccc1"]
+
+[[case]]
 id = "abbrev/ethyl-acetate"
 corpus = "curated"
 input = "CH3CO2Et"
@@ -305,14 +312,6 @@ expect = "unique"
 smiles = ["*CC(=O)O"]
 
 # Underdetermined
-
-[[case]]
-id = "underdetermined/benzene-formula"
-corpus = "curated"
-input = "C6H6"
-expect = "underdetermined"
-reason = "molecular-formula"
-span = [0, 4]
 
 [[case]]
 id = "underdetermined/ethanol-formula"

@@ -188,7 +188,7 @@ pub struct Ambiguity {
 /// Why a well-formed formula yields no structure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Underdetermination {
-    /// A molecular formula such as `C6H6`, which encodes no connectivity.
+    /// A molecular formula such as `C6H12O6`, which encodes no connectivity.
     MolecularFormula,
     /// A ring the dictionary cannot expand.
     UnknownRing,

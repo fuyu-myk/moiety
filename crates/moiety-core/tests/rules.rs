@@ -170,7 +170,7 @@ fn underdetermined_inputs_name_their_reason() {
         Interpretation::Underdetermined { reason, .. } => reason,
         other => panic!("{input}: expected underdetermined, got {}", other.kind()),
     };
-    assert_eq!(reason("C6H6"), Underdetermination::MolecularFormula);
+    assert_eq!(reason("C6H12O6"), Underdetermination::MolecularFormula);
     assert_eq!(reason("CH3C6H4CH3"), Underdetermination::UnknownRing);
     assert_eq!(reason("CH3Qq"), Underdetermination::UnknownAbbreviation);
 }
