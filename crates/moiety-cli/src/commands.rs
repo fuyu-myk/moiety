@@ -32,6 +32,7 @@ pub fn run(args: Args) -> Result<ExitCode> {
         Command::Write => write(&args, &dictionary),
         Command::Draw | Command::Html => draw(&args, &dictionary, &options),
         Command::Conformance => conformance(&args, &dictionary, &options),
+        Command::Differential => differential(&args, &dictionary, &options),
         Command::Dictionary => {
             emit(&args, &list_dictionary(&dictionary))?;
             Ok(ExitCode::SUCCESS)
@@ -253,6 +254,60 @@ fn conformance(args: &Args, dictionary: &Dictionary, options: &Options) -> Resul
     }
     emit(args, &out)?;
     Ok(if misses.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
+fn differential(args: &Args, dictionary: &Dictionary, options: &Options) -> Result<ExitCode> {
+    use moiety::differential::{compare, load_adjudications, load_external, report, summary};
+    let [path] = &args.inputs[..] else {
+        bail!("differential compares one results file at a time");
+    };
+    let text = std::fs::read_to_string(path).with_context(|| format!("cannot read {path}"))?;
+    let external = load_external(&text).with_context(|| format!("in {path}"))?;
+    let verdicts = match std::fs::read_to_string(&args.adjudications) {
+        Ok(text) => load_adjudications(&text)
+            .with_context(|| format!("in {}", args.adjudications.display()))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("cannot read {}", args.adjudications.display()));
+        }
+    };
+    let comparisons = compare(&external, &verdicts, dictionary, options);
+    let (counts, open) = summary(&comparisons);
+    let mut out = format!(
+        "moiety {} against {}\n\n",
+        env!("CARGO_PKG_VERSION"),
+        external.source
+    );
+    for (agreement, count) in &counts {
+        line(&mut out, &format!("{:<16}{count}", agreement.as_str()));
+    }
+    line(&mut out, &format!("{:<16}{open}", "unadjudicated"));
+    for comparison in comparisons.iter().filter(|c| c.unadjudicated()) {
+        line(
+            &mut out,
+            &format!(
+                "  {:<14} {:<10} moiety {:?} other {}",
+                comparison.input,
+                comparison.agreement.as_str(),
+                comparison.readings,
+                comparison.other.as_deref().unwrap_or("-")
+            ),
+        );
+    }
+    match &args.output {
+        Some(path) => {
+            std::fs::write(path, report(&external, &comparisons))
+                .with_context(|| format!("cannot write {}", path.display()))?;
+            print!("{out}");
+        }
+        None => print!("{out}"),
+    }
+    Ok(if open == 0 {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE

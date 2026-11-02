@@ -20,6 +20,7 @@
 
 pub mod conformance;
 pub mod dictionary;
+pub mod differential;
 pub mod writer;
 
 pub use dictionary::{LoadError, default_dictionary};

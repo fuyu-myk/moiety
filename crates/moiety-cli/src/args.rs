@@ -11,6 +11,7 @@ commands:
   draw <formula>           render the skeletal structure as SVG
   html <formula>           render an interactive page with every reading
   conformance              run the conformance suite and round-trip corpora
+  differential <results>   compare with another implementation's label results
   dictionary               list the abbreviation dictionary
 
 options:
@@ -22,6 +23,7 @@ options:
   --corpus <file>          round-trip SMILES list (default conformance/roundtrip.smi)
   --generated <n>          also round-trip n generated molecules (default 500)
   --seed <n>               seed for generated molecules (default 2026)
+  --adjudications <file>   recorded verdicts (default conformance/differential/adjudications.toml)
   -h, --help               show this help
 ";
 
@@ -32,6 +34,7 @@ pub enum Command {
     Draw,
     Html,
     Conformance,
+    Differential,
     Dictionary,
     Help,
 }
@@ -48,6 +51,7 @@ pub struct Args {
     pub corpus: PathBuf,
     pub generated: usize,
     pub seed: u64,
+    pub adjudications: PathBuf,
 }
 
 pub fn parse(argv: &[String]) -> Result<Args> {
@@ -59,6 +63,7 @@ pub fn parse(argv: &[String]) -> Result<Args> {
         Some("draw") => Command::Draw,
         Some("html") => Command::Html,
         Some("conformance") => Command::Conformance,
+        Some("differential") => Command::Differential,
         Some("dictionary") => Command::Dictionary,
         Some(other) => bail!("unknown command {other:?}\n\n{USAGE}"),
     };
@@ -73,6 +78,7 @@ pub fn parse(argv: &[String]) -> Result<Args> {
         corpus: PathBuf::from("conformance/roundtrip.smi"),
         generated: 500,
         seed: 2026,
+        adjudications: PathBuf::from("conformance/differential/adjudications.toml"),
     };
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
@@ -90,6 +96,7 @@ pub fn parse(argv: &[String]) -> Result<Args> {
             "--corpus" => args.corpus = value(arg)?.into(),
             "--generated" => args.generated = number(&value(arg)?, arg)?,
             "--seed" => args.seed = number(&value(arg)?, arg)?,
+            "--adjudications" => args.adjudications = value(arg)?.into(),
             "--" => args.inputs.extend(iter.by_ref().cloned()),
             flag if flag.starts_with("--") => bail!("unknown option {flag:?}"),
             input => args.inputs.push(input.to_string()),

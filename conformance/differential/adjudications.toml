@@ -1,0 +1,209 @@
+# Verdicts on every disagreement between moiety and MolScribe in report.toml.
+#
+# verdict = "moiety": moiety's result is right.
+# verdict = "both": both results are defensible readings of the label.
+# verdict = "other": MolScribe is right, so moiety has a bug to fix.
+
+[[adjudication]]
+text = "C3H7"
+side = "left"
+verdict = "moiety"
+note = "Propyl and isopropyl share this formula; moiety reports it as underdetermined instead of guessing n-propyl."
+
+[[adjudication]]
+text = "C4H9"
+side = "left"
+verdict = "moiety"
+note = "Four butyl isomers share this formula; moiety reports it as underdetermined instead of guessing n-butyl."
+
+[[adjudication]]
+text = "sBu"
+side = "left"
+verdict = "moiety"
+note = "sec-Butyl. MolScribe has no sBu entry and reads the label as n-butyl."
+
+[[adjudication]]
+text = "OCOCH3"
+side = "left"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[adjudication]]
+text = "COCH3"
+side = "left"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[adjudication]]
+text = "CH2COCH3"
+side = "left"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[adjudication]]
+text = "COCF3"
+side = "left"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[adjudication]]
+text = "NHCOCH3"
+side = "left"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[adjudication]]
+text = "N(CH3)COCH3"
+side = "left"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[adjudication]]
+text = "CH3CO"
+side = "right"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl. moiety ranks acetyl above the acyl anion."
+
+[[adjudication]]
+text = "MeO2C"
+side = "right"
+verdict = "moiety"
+note = "Methoxycarbonyl. MolScribe returns a radical with two methoxy groups on one carbon."
+
+[[adjudication]]
+text = "EtO2C"
+side = "right"
+verdict = "moiety"
+note = "Ethoxycarbonyl. MolScribe returns a radical with two ethoxy groups on one carbon."
+
+[[adjudication]]
+text = "N3"
+side = "left"
+verdict = "moiety"
+note = "Azide is N=[N+]=[N-]; MolScribe returns a nitrogen radical."
+
+[[adjudication]]
+text = "NCO"
+side = "left"
+verdict = "moiety"
+note = "Written from the attachment, NCO is isocyanate. MolScribe falls back to reading right to left and returns cyanate."
+
+[[adjudication]]
+text = "NCS"
+side = "left"
+verdict = "moiety"
+note = "Written from the attachment, NCS is isothiocyanate. MolScribe falls back to reading right to left and returns thiocyanate."
+
+[[adjudication]]
+text = "SO2NH2"
+side = "left"
+verdict = "moiety"
+note = "Sulfonamide. MolScribe returns a hypervalent SH2 bonded to a nitro group."
+
+[[adjudication]]
+text = "S(O)CH3"
+side = "left"
+verdict = "moiety"
+note = "The parenthesized oxygen is a branch on sulfur, so this is methylsulfinyl. MolScribe ignores the branch and returns the sulfenate."
+
+[[adjudication]]
+text = "SOCH3"
+side = "left"
+verdict = "both"
+note = "Without parentheses the oxygen can be a pendant (methylsulfinyl, ranked first) or a chain link (the sulfenate MolScribe returns, ranked second)."
+
+[[adjudication]]
+text = "CH3S"
+side = "right"
+verdict = "moiety"
+note = "Methylthio, or methanethiolate, both listed by moiety. MolScribe returns a hypervalent radical."
+
+[[adjudication]]
+text = "HO"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "H2N"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "MeO"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "EtO"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "H3CO"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "Me2N"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "Et2N"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "AcO"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "AcHN"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "BocHN"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "BnO"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "TsO"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+[[adjudication]]
+text = "MeS"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "HS"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[adjudication]]
+text = "PhO"
+side = "right"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+

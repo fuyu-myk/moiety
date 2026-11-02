@@ -22,7 +22,7 @@ CH3CH3OH
     note: did you mean CH3CH2OH?
 ```
 
-The language is specified in [docs/grammar.md](docs/grammar.md): normalization, the token lattice, the surface grammar, valence resolution (rules R1 to R5), the ambiguity taxonomy, ranking policy 1 and the diagnostic codes.
+The language is specified in [docs/grammar.md](docs/grammar.md): normalization, the token lattice, the surface grammar, valence resolution (rules R1 to R5), the ambiguity taxonomy, ranking policy 2 and the diagnostic codes.
 
 ## Crates
 
@@ -70,6 +70,7 @@ moiety write <smiles>...      condensed formulas from SMILES (the inverse writer
 moiety draw <formula>         skeletal structure as SVG
 moiety html <formula>         a page with every reading and provenance highlighting
 moiety conformance            the conformance suite and round-trip corpora, with the v1.0 gate
+moiety differential <file>    compare with another implementation's results on substituent labels
 moiety dictionary             the abbreviation dictionary
 ```
 
@@ -94,13 +95,15 @@ Current results (`moiety conformance`):
 
 | Metric | Result | v1.0 target |
 | --- | --- | --- |
-| Cases passed | 290 / 290 | |
-| False-unique rate | 0 / 25 | 0% |
-| Ambiguity class recall | 25 / 25 | at least 98% |
-| Top-1 accuracy, ambiguous cases | 25 / 25 | at least 85% |
+| Cases passed | 294 / 294 | |
+| False-unique rate | 0 / 27 | 0% |
+| Ambiguity class recall | 27 / 27 | at least 98% |
+| Top-1 accuracy, ambiguous cases | 27 / 27 | at least 85% |
 | Diagnostic span accuracy | 23 / 23 | at least 90% |
 | Round-trip recovery | 685 / 685 (185 curated, 500 generated) | at least 95% |
-| Ambiguity rate | 25 / 290 | reported |
+| Ambiguity rate | 27 / 294 | reported |
+
+Differential testing against MolScribe's condensed-formula expander covers 246 substituent labels: 182 match exactly, every disagreement has a recorded verdict, and none is decided against moiety. See [conformance/differential](conformance/differential/README.md).
 
 The ambiguous cases are adversarial by design: symbol collisions such as `COCl2` (phosgene or cobalt chloride), shadowed abbreviations such as `TsCl` (tosyl or tennessine), trailing dashes that could be a charge or an open valence, and units that can be a pendant or a chain link, such as the oxygen in `CH3SOCH3`.
 

@@ -1,0 +1,655 @@
+source = "MolScribe 7296a30413eb55436702011efdff78131f66d162"
+toolkit = "RDKit 2026.09.1"
+unadjudicated = 0
+
+[counts]
+alternative = 16
+both-fail = 1
+different = 16
+moiety-refuses = 2
+other-fails = 29
+same = 182
+
+[[label]]
+text = "C3H7"
+side = "left"
+input = "-C3H7"
+moiety = "underdetermined"
+readings = []
+other = "*CCC"
+agreement = "moiety-refuses"
+verdict = "moiety"
+note = "Propyl and isopropyl share this formula; moiety reports it as underdetermined instead of guessing n-propyl."
+
+[[label]]
+text = "C4H9"
+side = "left"
+input = "-C4H9"
+moiety = "underdetermined"
+readings = []
+other = "*CCCC"
+agreement = "moiety-refuses"
+verdict = "moiety"
+note = "Four butyl isomers share this formula; moiety reports it as underdetermined instead of guessing n-butyl."
+
+[[label]]
+text = "C6H5"
+side = "left"
+input = "-C6H5"
+moiety = "unique"
+readings = ["*c1ccccc1"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "C6H11"
+side = "left"
+input = "-C6H11"
+moiety = "unique"
+readings = ["*C1CCCCC1"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "CH2C6H5"
+side = "left"
+input = "-CH2C6H5"
+moiety = "unique"
+readings = ["*Cc1ccccc1"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "sBu"
+side = "left"
+input = "-sBu"
+moiety = "unique"
+readings = ["*C(C)CC"]
+other = "*CCCC"
+agreement = "different"
+verdict = "moiety"
+note = "sec-Butyl. MolScribe has no sBu entry and reads the label as n-butyl."
+
+[[label]]
+text = "Tol"
+side = "left"
+input = "-Tol"
+moiety = "unique"
+readings = ["*c1ccc(C)cc1"]
+other_error = "invalid SMILES [Tol]"
+agreement = "other-fails"
+
+[[label]]
+text = "Tr"
+side = "left"
+input = "-Tr"
+moiety = "unique"
+readings = ["*C(c1ccccc1)(c1ccccc1)c1ccccc1"]
+other_error = "invalid SMILES [Tr]"
+agreement = "other-fails"
+
+[[label]]
+text = "OiPr"
+side = "left"
+input = "-OiPr"
+moiety = "unique"
+readings = ["*OC(C)C"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "OCOCH3"
+side = "left"
+input = "-OCOCH3"
+moiety = "unique"
+readings = ["*OC(C)=O"]
+other = "*O[C]OC"
+agreement = "different"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[label]]
+text = "OC(O)CH3"
+side = "left"
+input = "-OC(O)CH3"
+moiety = "unique"
+readings = ["*OC(C)=O"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "OTHP"
+side = "left"
+input = "-OTHP"
+moiety = "unique"
+readings = ["*OC1CCCCO1"]
+other_error = "invalid SMILES [P]([H])([T])=[O]"
+agreement = "other-fails"
+
+[[label]]
+text = "OMOM"
+side = "left"
+input = "-OMOM"
+moiety = "unique"
+readings = ["*OCOC"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "COCH3"
+side = "left"
+input = "-COCH3"
+moiety = "unique"
+readings = ["*C(C)=O"]
+other = "*[C]OC"
+agreement = "different"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[label]]
+text = "C(O)CH3"
+side = "left"
+input = "-C(O)CH3"
+moiety = "unique"
+readings = ["*C(C)=O"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "CH2COCH3"
+side = "left"
+input = "-CH2COCH3"
+moiety = "unique"
+readings = ["*CC(C)=O"]
+other = "*C[C]OC"
+agreement = "different"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[label]]
+text = "COCF3"
+side = "left"
+input = "-COCF3"
+moiety = "unique"
+readings = ["*C(C(F)(F)F)=O"]
+other = "*[C]OC(F)(F)F"
+agreement = "different"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[label]]
+text = "NMe2"
+side = "left"
+input = "-NMe2"
+moiety = "unique"
+readings = ["*N(C)C"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "NHCOCH3"
+side = "left"
+input = "-NHCOCH3"
+moiety = "unique"
+readings = ["*NC(C)=O"]
+other = "*N[C]OC"
+agreement = "different"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[label]]
+text = "NHC(O)CH3"
+side = "left"
+input = "-NHC(O)CH3"
+moiety = "unique"
+readings = ["*NC(C)=O"]
+other_error = "invalid SMILES [N]([H])#[C][O][C]([H])([H])[H]"
+agreement = "other-fails"
+
+[[label]]
+text = "N(CH3)COCH3"
+side = "left"
+input = "-N(CH3)COCH3"
+moiety = "unique"
+readings = ["*N(C)C(C)=O"]
+other = "*N(C)[C]OC"
+agreement = "different"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl."
+
+[[label]]
+text = "N3"
+side = "left"
+input = "-N3"
+moiety = "unique"
+readings = ["*N=[N+]=[N-]"]
+other = "*N=N[N]"
+agreement = "different"
+verdict = "moiety"
+note = "Azide is N=[N+]=[N-]; MolScribe returns a nitrogen radical."
+
+[[label]]
+text = "NCO"
+side = "left"
+input = "-NCO"
+moiety = "unique"
+readings = ["*N=C=O"]
+other = "*OC#N"
+agreement = "different"
+verdict = "moiety"
+note = "Written from the attachment, NCO is isocyanate. MolScribe falls back to reading right to left and returns cyanate."
+
+[[label]]
+text = "NCS"
+side = "left"
+input = "-NCS"
+moiety = "unique"
+readings = ["*N=C=S"]
+other = "*SC#N"
+agreement = "different"
+verdict = "moiety"
+note = "Written from the attachment, NCS is isothiocyanate. MolScribe falls back to reading right to left and returns thiocyanate."
+
+[[label]]
+text = "C(=NH)NH2"
+side = "left"
+input = "-C(=NH)NH2"
+moiety = "unique"
+readings = ["*C(=N)N"]
+other_error = "invalid SMILES [C](=[N]([H]))=[N]([H])([H])"
+agreement = "other-fails"
+
+[[label]]
+text = "SO2NH2"
+side = "left"
+input = "-SO2NH2"
+moiety = "ambiguous"
+readings = ["*S(N)(=O)=O", "*S(=O)ON"]
+other = "*[SH2][N+]([O-])=O"
+agreement = "different"
+verdict = "moiety"
+note = "Sulfonamide. MolScribe returns a hypervalent SH2 bonded to a nitro group."
+
+[[label]]
+text = "SOCH3"
+side = "left"
+input = "-SOCH3"
+moiety = "ambiguous"
+readings = ["*S(C)=O", "*SOC"]
+other = "*SOC"
+agreement = "alternative"
+verdict = "both"
+note = "Without parentheses the oxygen can be a pendant (methylsulfinyl, ranked first) or a chain link (the sulfenate MolScribe returns, ranked second)."
+
+[[label]]
+text = "S(O)CH3"
+side = "left"
+input = "-S(O)CH3"
+moiety = "unique"
+readings = ["*S(C)=O"]
+other = "*SOC"
+agreement = "different"
+verdict = "moiety"
+note = "The parenthesized oxygen is a branch on sulfur, so this is methylsulfinyl. MolScribe ignores the branch and returns the sulfenate."
+
+[[label]]
+text = "TIPS"
+side = "left"
+input = "-TIPS"
+moiety = "ambiguous"
+readings = ["*[Si](C(C)C)(C(C)C)C(C)C", "*[Ti]P=S"]
+other_error = "invalid SMILES [S](#[P])([I])[T]"
+agreement = "other-fails"
+
+[[label]]
+text = "PO3H2"
+side = "left"
+input = "-PO3H2"
+moiety = "invalid"
+readings = []
+other_error = "no expansion"
+agreement = "both-fail"
+
+[[label]]
+text = "Piv"
+side = "left"
+input = "-Piv"
+moiety = "unique"
+readings = ["*C(C(C)(C)C)=O"]
+other_error = "invalid SMILES [Piv]"
+agreement = "other-fails"
+
+[[label]]
+text = "MOM"
+side = "left"
+input = "-MOM"
+moiety = "unique"
+readings = ["*COC"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "THP"
+side = "left"
+input = "-THP"
+moiety = "unique"
+readings = ["*C1CCCCO1"]
+other_error = "invalid SMILES [P]([H])([T])"
+agreement = "other-fails"
+
+[[label]]
+text = "HO"
+side = "right"
+input = "HO-"
+moiety = "ambiguous"
+readings = ["[OH-]", "*O"]
+other = "*O"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "H2N"
+side = "right"
+input = "H2N-"
+moiety = "ambiguous"
+readings = ["[NH2-]", "*N"]
+other = "*N"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "HOCH2"
+side = "right"
+input = "HOCH2-"
+moiety = "ambiguous"
+readings = ["*CO", "[CH2-]O"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "MeO"
+side = "right"
+input = "MeO-"
+moiety = "ambiguous"
+readings = ["C[O-]", "*OC"]
+other = "*OC"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "EtO"
+side = "right"
+input = "EtO-"
+moiety = "ambiguous"
+readings = ["CC[O-]", "*OCC"]
+other = "*OCC"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "CH3O"
+side = "right"
+input = "CH3O-"
+moiety = "ambiguous"
+readings = ["C[O-]", "*OC"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "CH3CH2O"
+side = "right"
+input = "CH3CH2O-"
+moiety = "ambiguous"
+readings = ["CC[O-]", "*OCC"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "H3CO"
+side = "right"
+input = "H3CO-"
+moiety = "ambiguous"
+readings = ["C[O-]", "*OC"]
+other = "*OC"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "MeO2C"
+side = "right"
+input = "MeO2C-"
+moiety = "ambiguous"
+readings = ["*C(=O)OC", "CO[C-]=O"]
+other = "*[C](OC)OC"
+agreement = "different"
+verdict = "moiety"
+note = "Methoxycarbonyl. MolScribe returns a radical with two methoxy groups on one carbon."
+
+[[label]]
+text = "EtO2C"
+side = "right"
+input = "EtO2C-"
+moiety = "ambiguous"
+readings = ["*C(=O)OCC", "CCO[C-]=O"]
+other = "*[C](OCC)OCC"
+agreement = "different"
+verdict = "moiety"
+note = "Ethoxycarbonyl. MolScribe returns a radical with two ethoxy groups on one carbon."
+
+[[label]]
+text = "(CH3)2N"
+side = "right"
+input = "(CH3)2N-"
+moiety = "ambiguous"
+readings = ["C[N-]C", "*N(C)C"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "Me2N"
+side = "right"
+input = "Me2N-"
+moiety = "ambiguous"
+readings = ["C[N-]C", "*N(C)C"]
+other = "*N(C)C"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "Et2N"
+side = "right"
+input = "Et2N-"
+moiety = "ambiguous"
+readings = ["CC[N-]CC", "*N(CC)CC"]
+other = "*N(CC)CC"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "(CH3)3C"
+side = "right"
+input = "(CH3)3C-"
+moiety = "ambiguous"
+readings = ["*C(C)(C)C", "C[C-](C)C"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "CH3CO"
+side = "right"
+input = "CH3CO-"
+moiety = "ambiguous"
+readings = ["*C(C)=O", "C[C-]=O"]
+other = "*[C]OC"
+agreement = "different"
+verdict = "moiety"
+note = "MolScribe's search makes the oxygen a chain link and leaves a carbon radical; the label is a carbonyl. moiety ranks acetyl above the acyl anion."
+
+[[label]]
+text = "AcO"
+side = "right"
+input = "AcO-"
+moiety = "ambiguous"
+readings = ["CC([O-])=O", "*OC(C)=O"]
+other = "*OC(C)=O"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "AcHN"
+side = "right"
+input = "AcHN-"
+moiety = "ambiguous"
+readings = ["CC([NH-])=O", "*NC(C)=O"]
+other = "*NC(C)=O"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "BocHN"
+side = "right"
+input = "BocHN-"
+moiety = "ambiguous"
+readings = ["CC(C)(C)OC([NH-])=O", "*NC(=O)OC(C)(C)C"]
+other = "*NC(=O)OC(C)(C)C"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "PhCH2"
+side = "right"
+input = "PhCH2-"
+moiety = "ambiguous"
+readings = ["*Cc1ccccc1", "[CH2-]c1ccccc1"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "PhCH2O"
+side = "right"
+input = "PhCH2O-"
+moiety = "ambiguous"
+readings = ["[O-]Cc1ccccc1", "*OCc1ccccc1"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "BnO"
+side = "right"
+input = "BnO-"
+moiety = "ambiguous"
+readings = ["[O-]Cc1ccccc1", "*OCc1ccccc1"]
+other = "*OCc1ccccc1"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "TsO"
+side = "right"
+input = "TsO-"
+moiety = "ambiguous"
+readings = ["Cc1ccc(cc1)S([O-])(=O)=O", "*OS(c1ccc(C)cc1)(=O)=O", "[O-][Ts]", "*O[Ts]"]
+other = "*OS(c1ccc(C)cc1)(=O)=O"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "CH3S"
+side = "right"
+input = "CH3S-"
+moiety = "ambiguous"
+readings = ["C[S-]", "*SC"]
+other = "*[SH3]=[C]"
+agreement = "different"
+verdict = "moiety"
+note = "Methylthio, or methanethiolate, both listed by moiety. MolScribe returns a hypervalent radical."
+
+[[label]]
+text = "MeS"
+side = "right"
+input = "MeS-"
+moiety = "ambiguous"
+readings = ["C[S-]", "*SC"]
+other = "*SC"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "HS"
+side = "right"
+input = "HS-"
+moiety = "ambiguous"
+readings = ["[SH-]", "*S"]
+other = "*S"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
+
+[[label]]
+text = "H2NCO"
+side = "right"
+input = "H2NCO-"
+moiety = "ambiguous"
+readings = ["*C(N)=O", "N[C-]=O", "*[Co]N"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "(CH3)2CH"
+side = "right"
+input = "(CH3)2CH-"
+moiety = "ambiguous"
+readings = ["*C(C)C", "C[CH-]C"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "CH3CH2"
+side = "right"
+input = "CH3CH2-"
+moiety = "ambiguous"
+readings = ["*CC", "[CH2-]C"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "CH3(CH2)3"
+side = "right"
+input = "CH3(CH2)3-"
+moiety = "ambiguous"
+readings = ["*CCCC", "[CH2-]CCC"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "HOCH2CH2"
+side = "right"
+input = "HOCH2CH2-"
+moiety = "ambiguous"
+readings = ["*CCO", "[CH2-]CO"]
+other_error = "no expansion"
+agreement = "other-fails"
+
+[[label]]
+text = "PhO"
+side = "right"
+input = "PhO-"
+moiety = "ambiguous"
+readings = ["[O-]c1ccccc1", "*Oc1ccccc1"]
+other = "*Oc1ccccc1"
+agreement = "alternative"
+verdict = "both"
+note = "A trailing dash after a heteroatom is a charge or an open valence (grammar 7.2). moiety ranks the anion first, as for a standalone formula, and lists the group reading MolScribe returns second."
