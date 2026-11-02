@@ -107,12 +107,14 @@ Syntax errors:
 | Code | Condition |
 | --- | --- |
 | CF0001 | Empty formula or empty component |
+| CF0002 | Formula longer than 256 bytes |
+| CF0003 | Formula needs more search than the limit allows (200,000 states per component by default) |
 | CF0102 | A group is opened and never closed |
 | CF0103 | A close bracket has no matching open |
 | CF0104 | Warning: a group opened with one bracket kind is closed with the other |
 | CF0105 | A token appears where the grammar does not allow it |
 | CF0106 | A group is empty |
-| CF0107 | A count of zero |
+| CF0107 | A count of zero or above 100 |
 
 ## 5. Valence model
 
@@ -284,13 +286,14 @@ Diagnostics follow the rustc model: a code, a message, a primary span and labell
 | Code | Meaning |
 | --- | --- |
 | CF0101 | Unrecognized character |
-| CF0201 | An explicit bond is stronger than an atom can take |
+| CF0201 | Two atoms cannot form the bond: an explicit bond stronger than they can take, a bond section 5.2 forbids, or a pentavalent nitrogen without a double bond to oxygen |
 | CF0202 | Valence left open at the end of the component |
 | CF0203 | Leading groups have no anchor with enough free valence |
 | CF0204 | Chain cannot continue past a terminal group |
 | CF0205 | The written charge cannot be placed |
 | CF0206 | A repeated group has no free valence |
 | CF0207 | A complete molecule is used as a group |
+| CF0208 | More pendants than the host atom has room for |
 | CF0301 | Warning: stereo descriptor ignored |
 | CF0302 | Warning: isotope label read as hydrogen |
 | CF0303 | Warning: reading limit reached, later readings dropped |

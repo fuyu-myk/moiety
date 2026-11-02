@@ -3,6 +3,8 @@
 mod state;
 mod units;
 
+use std::cell::Cell;
+
 use state::{AAtom, Pending, State, dedupe};
 use units::{Piece, expand};
 
@@ -64,10 +66,13 @@ pub(crate) struct Assembly {
     pub failure: Option<Failure>,
     pub underdetermined: Option<(Span, Underdetermination)>,
     pub truncated: bool,
+    pub exhausted: bool,
 }
 
 pub(crate) struct Ctx<'a> {
     pub dictionary: &'a Dictionary,
+    pub budget: &'a Cell<usize>,
+    pub exhausted: bool,
     pub failure: Option<Failure>,
     pub underdetermined: Option<(Span, Underdetermination)>,
     pub truncated: bool,
@@ -77,7 +82,7 @@ pub(crate) struct Ctx<'a> {
 }
 
 impl<'a> Ctx<'a> {
-    fn new(dictionary: &'a Dictionary, tree: &Tree) -> Self {
+    fn new(dictionary: &'a Dictionary, budget: &'a Cell<usize>, tree: &Tree) -> Self {
         let lone = tree.seq.items.len() == 1 && tree.lead.is_none();
         let single_atom = lone
             && matches!(tree.seq.items[0].unit.kind, UnitKind::Atom { .. })
@@ -85,6 +90,8 @@ impl<'a> Ctx<'a> {
             && !matches!(tree.tail, Tail::Marker(..));
         Self {
             dictionary,
+            budget,
+            exhausted: false,
             failure: None,
             underdetermined: None,
             truncated: false,
@@ -110,13 +117,14 @@ impl<'a> Ctx<'a> {
             failure: self.failure,
             underdetermined: self.underdetermined,
             truncated: self.truncated,
+            exhausted: self.exhausted,
         }
     }
 }
 
-/// Assembles one parse tree under rules R1 to R4.
-pub(crate) fn assemble(tree: &Tree, dictionary: &Dictionary) -> Assembly {
-    let mut ctx = Ctx::new(dictionary, tree);
+/// Assembles one parse tree under rules R1 to R4, spending at most `budget` search states.
+pub(crate) fn assemble(tree: &Tree, dictionary: &Dictionary, budget: &Cell<usize>) -> Assembly {
+    let mut ctx = Ctx::new(dictionary, budget, tree);
     let mut initial = State::default();
     if let Tail::Charge(charge, _) = tree.tail {
         initial.charge_left = charge;
@@ -134,7 +142,11 @@ pub(crate) fn assemble(tree: &Tree, dictionary: &Dictionary) -> Assembly {
 }
 
 /// Reads a component as a salt under rule R5: leading metals become cations and the rest an anion.
-pub(crate) fn assemble_salt(tree: &Tree, dictionary: &Dictionary) -> Assembly {
+pub(crate) fn assemble_salt(
+    tree: &Tree,
+    dictionary: &Dictionary,
+    budget: &Cell<usize>,
+) -> Assembly {
     let metal = |item: &Item| matches!(item.unit.kind, UnitKind::Atom { element, .. } if element.is_metal());
     let split = tree
         .seq
@@ -188,7 +200,7 @@ pub(crate) fn assemble_salt(tree: &Tree, dictionary: &Dictionary) -> Assembly {
             tail: Tail::Charge(-total, rest_span),
             ..tree.clone()
         };
-        let mut ctx = Ctx::new(dictionary, &anion);
+        let mut ctx = Ctx::new(dictionary, budget, &anion);
         let mut initial = State {
             charge_left: -total,
             score: -1,
@@ -282,6 +294,12 @@ pub(crate) fn assemble_seq(
             ctx.fail(open_valence(dead, progress));
         }
         next.retain(|s| !s.has_dead_atom() && !unreachable(s));
+        let left = ctx.budget.get().saturating_sub(next.len().max(1));
+        ctx.budget.set(left);
+        if left == 0 {
+            ctx.exhausted = true;
+            return Vec::new();
+        }
         let (kept, truncated) = dedupe(next, STATE_LIMIT);
         ctx.truncated |= truncated;
         if kept.is_empty() {

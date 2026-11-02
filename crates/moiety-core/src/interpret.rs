@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::BTreeMap;
 
 use crate::assembly::{Derivation, Failure, assemble, assemble_salt};
@@ -22,7 +23,7 @@ pub const RANKING_POLICY_VERSION: u32 = 1;
 /// Longest formula, in bytes, that [`interpret`] accepts.
 pub const MAX_INPUT_LEN: usize = 256;
 
-const PATH_LIMIT: usize = 256;
+const PATH_LIMIT: usize = 128;
 
 /// How hypervalent nitrogen is represented. See the grammar, section 6.10.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -54,6 +55,8 @@ pub struct Options {
     pub max_readings: usize,
     /// Whether invalid input triggers a search for a nearby formula that reads.
     pub suggestions: bool,
+    /// Most search states spent on one component before giving up with CF0003.
+    pub search_limit: usize,
 }
 
 impl Default for Options {
@@ -62,6 +65,7 @@ impl Default for Options {
             charge_convention: ChargeConvention::default(),
             max_readings: 32,
             suggestions: true,
+            search_limit: 200_000,
         }
     }
 }
@@ -222,14 +226,17 @@ fn component(
     let mut failure: Option<(Failure, i32)> = None;
     let mut underdetermined = None;
     let mut truncated = paths_truncated;
+    let mut exhausted = false;
+    let budget = Cell::new(options.search_limit);
     for salt in [false, true] {
         for (tree, &score) in trees.iter().zip(&lexical) {
             let assembly = if salt {
-                assemble_salt(tree, dictionary)
+                assemble_salt(tree, dictionary, &budget)
             } else {
-                assemble(tree, dictionary)
+                assemble(tree, dictionary, &budget)
             };
-            truncated |= assembly.truncated;
+            truncated |= assembly.truncated || assembly.exhausted;
+            exhausted |= assembly.exhausted;
             if let Some(found) = assembly.failure {
                 let better = failure.as_ref().is_none_or(|(current, current_score)| {
                     (found.progress, score) > (current.progress, *current_score)
@@ -250,6 +257,13 @@ fn component(
         }
     }
     if candidates.is_empty() {
+        if exhausted {
+            return Outcome::Invalid(Box::new(Diagnostic::new(
+                Code::TooComplex,
+                "formula needs more search than the limit allows",
+                Label::new(original(span), "too many alternative readings to explore"),
+            )));
+        }
         if trees.iter().any(Tree::is_formula_shaped) {
             return Outcome::Underdetermined(original(span), Underdetermination::MolecularFormula);
         }

@@ -186,6 +186,7 @@ name = "moiety"
 version = "0.1.0"
 dependencies = [
  "moiety-core",
+ "proptest",
  "serde",
  "thiserror",
  "toml",

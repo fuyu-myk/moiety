@@ -18,6 +18,8 @@ pub enum Code {
     Empty,
     /// CF0002: formula longer than the parser accepts.
     TooLong,
+    /// CF0003: formula needs more search than the limit allows.
+    TooComplex,
     /// CF0101: character that no token can start with.
     UnrecognizedCharacter,
     /// CF0102: group opened and never closed.
@@ -63,6 +65,7 @@ impl Code {
         match self {
             Code::Empty => "CF0001",
             Code::TooLong => "CF0002",
+            Code::TooComplex => "CF0003",
             Code::UnrecognizedCharacter => "CF0101",
             Code::UnclosedGroup => "CF0102",
             Code::UnmatchedClose => "CF0103",
@@ -103,9 +106,10 @@ impl Code {
     }
 }
 
-const ALL_CODES: [Code; 20] = [
+const ALL_CODES: [Code; 21] = [
     Code::Empty,
     Code::TooLong,
+    Code::TooComplex,
     Code::UnrecognizedCharacter,
     Code::UnclosedGroup,
     Code::UnmatchedClose,
