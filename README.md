@@ -94,13 +94,13 @@ Current results (`moiety conformance`):
 
 | Metric | Result | v1.0 target |
 | --- | --- | --- |
-| Cases passed | 282 / 282 | |
-| False-unique rate | 0 / 23 | 0% |
-| Ambiguity class recall | 23 / 23 | at least 98% |
-| Top-1 accuracy, ambiguous cases | 23 / 23 | at least 85% |
-| Diagnostic span accuracy | 20 / 20 | at least 90% |
+| Cases passed | 290 / 290 | |
+| False-unique rate | 0 / 25 | 0% |
+| Ambiguity class recall | 25 / 25 | at least 98% |
+| Top-1 accuracy, ambiguous cases | 25 / 25 | at least 85% |
+| Diagnostic span accuracy | 23 / 23 | at least 90% |
 | Round-trip recovery | 685 / 685 (185 curated, 500 generated) | at least 95% |
-| Ambiguity rate | 23 / 282 | reported |
+| Ambiguity rate | 25 / 290 | reported |
 
 The ambiguous cases are adversarial by design: symbol collisions such as `COCl2` (phosgene or cobalt chloride), shadowed abbreviations such as `TsCl` (tosyl or tennessine), trailing dashes that could be a charge or an open valence, and units that can be a pendant or a chain link, such as the oxygen in `CH3SOCH3`.
 
@@ -116,7 +116,11 @@ CI runs the same commands, including the conformance gate, from [.github/workflo
 
 ## Status
 
-The parser meets every item of the v1.0 gate except publication: the metrics above hold, the conformance suite is published and runnable by a third party, CI runs it on every push, and the inverse writer is complete. Publishing the crates to crates.io is the remaining step.
+The parser meets every item of the v1.0 gate: the metrics above hold, the conformance suite is published and runnable by a third party, CI runs it on every push, the inverse writer is complete, and the crates are published on crates.io.
+
+```text
+cargo install moiety-cli
+```
 
 ## License
 
