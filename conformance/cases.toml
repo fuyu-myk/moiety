@@ -1,0 +1,389 @@
+# moiety conformance suite.
+#
+# Each case names an input and the interpretation every conforming
+# implementation must return for it. Fields:
+#
+#   id       unique identifier, grouped by topic
+#   corpus   "curated" or "adversarial"
+#   input    the formula, exactly as a user would type it
+#   expect   "unique", "ambiguous", "underdetermined" or "invalid"
+#   smiles   expected readings in rank order, any valid SMILES spelling
+#   classes  expected ambiguity classes (ambiguous cases)
+#   reason   expected underdetermination reason
+#   code     expected diagnostic code (invalid cases)
+#   span     expected primary span as [start, end) byte offsets in the input
+#   warnings expected warning codes, in any order
+
+[suite]
+name = "moiety-conformance"
+version = "0.1.0"
+grammar = 1
+ranking = 1
+
+# Chains and branches
+
+[[case]]
+id = "chain/ethanol"
+corpus = "curated"
+input = "CH3CH2OH"
+expect = "unique"
+smiles = ["CCO"]
+
+[[case]]
+id = "chain/hexane-repeat"
+corpus = "curated"
+input = "CH3(CH2)4CH3"
+expect = "unique"
+smiles = ["CCCCCC"]
+
+[[case]]
+id = "chain/ethylene-glycol"
+corpus = "curated"
+input = "HOCH2CH2OH"
+expect = "unique"
+smiles = ["OCCO"]
+
+[[case]]
+id = "branch/isobutyric-acid"
+corpus = "curated"
+input = "(CH3)2CHCOOH"
+expect = "unique"
+smiles = ["CC(C)C(=O)O"]
+
+[[case]]
+id = "branch/isopentanol"
+corpus = "curated"
+input = "CH3CH(CH3)CH2CH2OH"
+expect = "unique"
+smiles = ["CC(C)CCO"]
+
+[[case]]
+id = "branch/tert-butanol"
+corpus = "curated"
+input = "(CH3)3COH"
+expect = "unique"
+smiles = ["CC(C)(C)O"]
+
+[[case]]
+id = "branch/trimethylamine"
+corpus = "curated"
+input = "(CH3)3N"
+expect = "unique"
+smiles = ["CN(C)C"]
+
+[[case]]
+id = "branch/diethyl-ether"
+corpus = "curated"
+input = "(CH3CH2)2O"
+expect = "unique"
+smiles = ["CCOCC"]
+
+[[case]]
+id = "branch/isopentane"
+corpus = "curated"
+input = "CH3CH2CH(CH3)2"
+expect = "unique"
+smiles = ["CCC(C)C"]
+
+[[case]]
+id = "branch/dimethylethylamine"
+corpus = "curated"
+input = "CH3CH2N(CH3)2"
+expect = "unique"
+smiles = ["CCN(C)C"]
+
+# Bond orders
+
+[[case]]
+id = "bond/acetic-acid"
+corpus = "curated"
+input = "CH3COOH"
+expect = "unique"
+smiles = ["CC(=O)O"]
+
+[[case]]
+id = "bond/acetamide"
+corpus = "curated"
+input = "CH3CONH2"
+expect = "unique"
+smiles = ["CC(N)=O"]
+
+[[case]]
+id = "bond/methyl-formate"
+corpus = "curated"
+input = "HCOOCH3"
+expect = "unique"
+smiles = ["COC=O"]
+
+[[case]]
+id = "bond/acetonitrile"
+corpus = "curated"
+input = "CH3CN"
+expect = "unique"
+smiles = ["CC#N"]
+
+[[case]]
+id = "bond/explicit-double"
+corpus = "curated"
+input = "CH3CH=CHCH3"
+expect = "unique"
+smiles = ["CC=CC"]
+
+[[case]]
+id = "bond/allyl-chloride"
+corpus = "curated"
+input = "CH2=CHCH2Cl"
+expect = "unique"
+smiles = ["C=CCCl"]
+
+[[case]]
+id = "bond/folded-triple"
+corpus = "curated"
+input = "HC≡CH"
+expect = "unique"
+smiles = ["C#C"]
+
+[[case]]
+id = "bond/dimethyl-disulfide"
+corpus = "curated"
+input = "CH3S2CH3"
+expect = "unique"
+smiles = ["CSSC"]
+
+# Conventions and charges
+
+[[case]]
+id = "charge/nitromethane"
+corpus = "curated"
+input = "CH3NO2"
+expect = "unique"
+smiles = ["C[N+](=O)[O-]"]
+
+[[case]]
+id = "charge/ammonium"
+corpus = "curated"
+input = "NH4+"
+expect = "unique"
+smiles = ["[NH4+]"]
+
+[[case]]
+id = "charge/iron-three"
+corpus = "curated"
+input = "Fe3+"
+expect = "unique"
+smiles = ["[Fe+3]"]
+
+[[case]]
+id = "charge/copper-sulfate-hydrate"
+corpus = "curated"
+input = "CuSO4·5H2O"
+expect = "unique"
+smiles = ["[Cu+2].[O-]S(=O)(=O)[O-].O.O.O.O.O"]
+
+# Normalization
+
+[[case]]
+id = "fold/subscripts"
+corpus = "curated"
+input = "CH₃CH₂OH"
+expect = "unique"
+smiles = ["CCO"]
+
+[[case]]
+id = "fold/stereo-descriptor"
+corpus = "curated"
+input = "(E)-CH3CH=CHCH3"
+expect = "unique"
+smiles = ["CC=CC"]
+warnings = ["CF0301"]
+
+# Abbreviations
+
+[[case]]
+id = "abbrev/benzyl-alcohol"
+corpus = "curated"
+input = "PhCH2OH"
+expect = "unique"
+smiles = ["OCc1ccccc1"]
+
+[[case]]
+id = "abbrev/toluene-formula-spelling"
+corpus = "curated"
+input = "C6H5CH3"
+expect = "unique"
+smiles = ["Cc1ccccc1"]
+
+[[case]]
+id = "abbrev/ethyl-acetate"
+corpus = "curated"
+input = "CH3CO2Et"
+expect = "unique"
+smiles = ["CCOC(C)=O"]
+
+[[case]]
+id = "abbrev/diethyl-malonate-reversed"
+corpus = "curated"
+input = "EtO2CCH2CO2Et"
+expect = "unique"
+smiles = ["CCOC(=O)CC(=O)OCC"]
+
+[[case]]
+id = "abbrev/triethylamine"
+corpus = "curated"
+input = "Et3N"
+expect = "unique"
+smiles = ["CCN(CC)CC"]
+
+[[case]]
+id = "abbrev/tert-butanol"
+corpus = "curated"
+input = "t-BuOH"
+expect = "unique"
+smiles = ["CC(C)(C)O"]
+
+# Ambiguity classes
+
+[[case]]
+id = "ambiguous/phosgene-or-cobalt-chloride"
+corpus = "adversarial"
+input = "COCl2"
+expect = "ambiguous"
+smiles = ["O=C(Cl)Cl", "Cl[Co]Cl"]
+classes = ["symbol-segmentation"]
+
+[[case]]
+id = "ambiguous/tosyl-chloride-or-tennessine"
+corpus = "adversarial"
+input = "TsCl"
+expect = "ambiguous"
+smiles = ["Cc1ccc(S(=O)(=O)Cl)cc1", "Cl[Ts]"]
+classes = ["abbreviation-shadowing"]
+
+[[case]]
+id = "ambiguous/acetate-or-acetoxy"
+corpus = "curated"
+input = "CH3COO-"
+expect = "ambiguous"
+smiles = ["CC(=O)[O-]", "*OC(C)=O"]
+classes = ["charge-vs-attachment"]
+
+[[case]]
+id = "ambiguous/ethyl-or-carbanion"
+corpus = "curated"
+input = "CH3CH2-"
+expect = "ambiguous"
+smiles = ["*CC", "[CH2-]C"]
+classes = ["charge-vs-attachment"]
+
+[[case]]
+id = "ambiguous/sulfoxide-or-sulfenate"
+corpus = "curated"
+input = "CH3SOCH3"
+expect = "ambiguous"
+smiles = ["CS(C)=O", "COSC"]
+classes = ["branch-point-fork"]
+
+[[case]]
+id = "unique/acetyl-shadow-dies"
+corpus = "adversarial"
+input = "AcOH"
+expect = "unique"
+smiles = ["CC(=O)O"]
+
+[[case]]
+id = "unique/propyl-shadow-dies"
+corpus = "adversarial"
+input = "PrOH"
+expect = "unique"
+smiles = ["CCCO"]
+
+[[case]]
+id = "attachment/leading-marker"
+corpus = "curated"
+input = "-CH2COOH"
+expect = "unique"
+smiles = ["*CC(=O)O"]
+
+# Underdetermined
+
+[[case]]
+id = "underdetermined/benzene-formula"
+corpus = "curated"
+input = "C6H6"
+expect = "underdetermined"
+reason = "molecular-formula"
+span = [0, 4]
+
+[[case]]
+id = "underdetermined/ethanol-formula"
+corpus = "curated"
+input = "C2H6O"
+expect = "underdetermined"
+reason = "molecular-formula"
+span = [0, 5]
+
+[[case]]
+id = "underdetermined/propanol-isomers"
+corpus = "curated"
+input = "C3H7OH"
+expect = "underdetermined"
+reason = "molecular-formula"
+span = [0, 4]
+
+[[case]]
+id = "underdetermined/xylene-ring"
+corpus = "curated"
+input = "CH3C6H4CH3"
+expect = "underdetermined"
+reason = "unknown-ring"
+span = [3, 7]
+
+[[case]]
+id = "underdetermined/unknown-abbreviation"
+corpus = "adversarial"
+input = "CH3Xy"
+expect = "underdetermined"
+reason = "unknown-abbreviation"
+span = [3, 5]
+
+# Invalid
+
+[[case]]
+id = "invalid/terminal-group"
+corpus = "adversarial"
+input = "CH3CH3OH"
+expect = "invalid"
+code = "CF0204"
+span = [3, 6]
+
+[[case]]
+id = "invalid/open-valence"
+corpus = "adversarial"
+input = "CH3CH2CH2"
+expect = "invalid"
+code = "CF0202"
+span = [6, 9]
+
+[[case]]
+id = "invalid/unclosed-group"
+corpus = "adversarial"
+input = "CH3(CH2"
+expect = "invalid"
+code = "CF0102"
+span = [3, 4]
+
+[[case]]
+id = "invalid/unmatched-close"
+corpus = "adversarial"
+input = "CH3)2"
+expect = "invalid"
+code = "CF0103"
+span = [3, 4]
+
+[[case]]
+id = "invalid/unrecognized-character"
+corpus = "adversarial"
+input = "C$H4"
+expect = "invalid"
+code = "CF0101"
+span = [1, 2]
