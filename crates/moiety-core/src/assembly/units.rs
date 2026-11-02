@@ -98,13 +98,17 @@ fn copies(
     element: Element,
     n: u32,
     span: Span,
-    ctx: &Ctx<'_>,
+    ctx: &mut Ctx<'_>,
 ) -> Vec<(State, Vec<usize>)> {
     let mut partial = vec![(state.clone(), Vec::new())];
     for _ in 0..n {
         let mut next = Vec::new();
         for (s, atoms) in partial {
             for option in options(element, s.charge_left, ctx.single_atom) {
+                if !ctx.spend(1) {
+                    ctx.exhausted = true;
+                    return Vec::new();
+                }
                 let mut s2 = s.clone();
                 let index = add_atom(&mut s2, element, option, span);
                 let mut atoms2 = atoms.clone();
@@ -112,7 +116,10 @@ fn copies(
                 next.push((s2, atoms2));
             }
         }
-        next.truncate(COMBINATION_LIMIT);
+        if next.len() > COMBINATION_LIMIT {
+            ctx.truncated = true;
+            next.truncate(COMBINATION_LIMIT);
+        }
         partial = next;
     }
     partial
@@ -338,18 +345,32 @@ fn repeat_group(
             .iter()
             .flat_map(|&offset| group.stack.iter().map(move |&i| i + offset))
             .collect();
+        let width = group.atoms.len();
         let mut states = vec![s];
-        for pair in offsets.windows(2) {
+        for (i, pair) in offsets.windows(2).enumerate() {
             let (from, to) = (pair[0] + tail, pair[1] + head);
             let mut next = Vec::new();
             for st in states {
                 for k in st.orders(from, to, None) {
+                    if !ctx.spend(1) {
+                        ctx.exhausted = true;
+                        return out;
+                    }
                     let mut s2 = st.clone();
                     s2.link(from, to, k, None);
-                    next.push(s2);
+                    let saturated = i == 0
+                        || s2.atoms[pair[0]..pair[0] + width]
+                            .iter()
+                            .all(|a| a.free() == 0);
+                    if saturated {
+                        next.push(s2);
+                    }
                 }
             }
-            next.truncate(COMBINATION_LIMIT);
+            if next.len() > COMBINATION_LIMIT {
+                ctx.truncated = true;
+                next.truncate(COMBINATION_LIMIT);
+            }
             states = next;
         }
         for s in states {

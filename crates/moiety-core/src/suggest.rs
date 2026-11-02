@@ -1,10 +1,12 @@
 use crate::dictionary::Dictionary;
-use crate::interpret::{Options, interpret};
+use std::cell::Cell;
+
+use crate::interpret::{Options, interpret_within};
 use crate::reading::Interpretation;
 use crate::span::Span;
 
 const MAX_SUGGESTION_INPUT: usize = 40;
-const CANDIDATE_SEARCH_LIMIT: usize = 2_000;
+const SUGGESTION_SEARCH_LIMIT: usize = 20_000;
 const MAX_CANDIDATES: usize = 120;
 const DIGITS: [char; 3] = ['2', '3', '4'];
 const LETTERS: [char; 5] = ['C', 'H', 'O', 'N', 'S'];
@@ -22,9 +24,9 @@ pub(crate) fn suggest(
     }
     let quiet = Options {
         suggestions: false,
-        search_limit: CANDIDATE_SEARCH_LIMIT,
         ..options.clone()
     };
+    let budget = Cell::new(SUGGESTION_SEARCH_LIMIT);
     let distance = |offset: usize| {
         if near.start <= offset && offset < near.end.max(near.start + 1) {
             0
@@ -34,12 +36,13 @@ pub(crate) fn suggest(
     };
     let mut positions: Vec<usize> = (0..chars.len()).collect();
     positions.sort_by_key(|&i| (distance(chars[i].0), std::cmp::Reverse(i)));
-    let tried = std::cell::Cell::new(0);
+    let tried = Cell::new(0);
     let reads = |candidate: &str| {
         tried.set(tried.get() + 1);
         tried.get() <= MAX_CANDIDATES
+            && budget.get() > 0
             && matches!(
-                interpret(candidate, dictionary, &quiet),
+                interpret_within(candidate, dictionary, &quiet, Some(&budget)),
                 Interpretation::Unique(_) | Interpretation::Ambiguous { .. }
             )
     };

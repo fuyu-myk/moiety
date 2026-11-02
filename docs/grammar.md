@@ -100,7 +100,7 @@ count      = digit , { digit } ;
 The grammar is deliberately permissive. Parsing is a chart parse over the lattice and its result is a parse forest: one tree per combination of lattice path and grammatical choice. The grammatical choices are:
 
 - A trailing `-` is a charge of -1 or a single-bond marker.
-- A count directly before a trailing sign is the last unit's count or the charge magnitude, so `Fe2+` parses as `Fe` with charge `2+` and as `Fe2` with charge `+`.
+- A count directly before a trailing bare sign is the last unit's count or the charge magnitude, so `Fe2+` parses as `Fe` with charge `2+` and as `Fe2` with charge `+`. A `^` charge never takes the count before it: `Fe2^+` is `Fe2` with charge `+`.
 
 Syntax errors:
 
@@ -114,7 +114,7 @@ Syntax errors:
 | CF0104 | Warning: a group opened with one bracket kind is closed with the other |
 | CF0105 | A token appears where the grammar does not allow it |
 | CF0106 | A group is empty |
-| CF0107 | A count of zero or above 100 |
+| CF0107 | A count of zero or above 100, or a charge of zero or above 8 |
 
 ## 5. Valence model
 
@@ -208,7 +208,7 @@ A component that is written as a molecular formula and has no reading is also `U
 
 - A leading marker creates an attachment atom first, so the first unit bonds to it.
 - A trailing marker bonds an attachment atom to the host after the last unit.
-- A written charge `q` is placed during assembly. Atoms may take a charge of the same sign as `q` while charge remains to be placed. Charges larger than 1 in magnitude are only placed on a component of a single atom. All of `q` must be placed.
+- A written charge `q`, between 1 and 8 in magnitude, is placed during assembly. No single atom carries a charge above 4 in magnitude. Atoms may take a charge of the same sign as `q` while charge remains to be placed. Charges larger than 1 in magnitude are only placed on a component of a single atom. All of `q` must be placed.
 - Charges inside dictionary fragments are kept and do not count against `q`.
 
 ### 6.8 R4, saturation
@@ -268,7 +268,7 @@ A reading's score is the sum of:
 
 - the priors of every lattice edge it used (section 3.3);
 - 0 for a chain and -1 for a pendant at an R1 fork;
-- 0 for the preferred role of a trailing `-` and -1 for the other. Attachment is preferred when the last element symbol before the `-`, skipping `H` and digits, is carbon. Charge is preferred otherwise;
+- 0 for the preferred role of a trailing `-` and -1 for the other. Attachment is preferred when the atom the `-` would sit on is carbon: the last element symbol before the `-`, skipping `H`, digits and whole parenthesized groups, or the attachment atom of a dictionary spelling that ends there. Charge is preferred otherwise, so `CH3C(=O)-` prefers the acetyl group and `CH3COO-` the acetate ion;
 - 0 for the preferred reading of a count written just before a trailing sign and -1 for the other. The count is preferably a subscript when it follows `H`, as in `CH2-`, and a charge magnitude otherwise, as in `Fe2+`;
 - -1 for every single bond the assembly made between two atoms of N, O, S and Se, so that `CH3SOCH3` ranks the sulfoxide above the sulfenate ester;
 - -1 for a salt reading under R5.

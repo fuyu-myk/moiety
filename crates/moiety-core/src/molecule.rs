@@ -184,9 +184,13 @@ impl Molecule {
         &self.bonds
     }
 
-    /// Mutable access to the bonds, by index.
-    pub fn bonds_mut(&mut self) -> &mut [Bond] {
-        &mut self.bonds
+    /// Changes the order of bond `index`, keeping the atoms it joins.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of range.
+    pub fn set_bond_order(&mut self, index: usize, order: BondOrder) {
+        self.bonds[index].order = order;
     }
 
     /// Whether the molecule has no atoms.
@@ -262,7 +266,10 @@ impl Molecule {
         self.atoms.iter().map(|atom| i32::from(atom.charge)).sum()
     }
 
-    /// Canonical SMILES. Two molecules have the same canonical SMILES exactly when they are the same graph.
+    /// Canonical SMILES: the same string for every atom ordering of the same graph.
+    ///
+    /// Symmetry ties are broken by trying every candidate, up to a fixed number of
+    /// branches per component, which covers every molecule moiety can read.
     #[must_use]
     pub fn to_smiles(&self) -> String {
         smiles::write(self)

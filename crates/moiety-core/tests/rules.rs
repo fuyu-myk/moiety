@@ -189,3 +189,44 @@ fn search_limit_reports_too_complex() {
         other => panic!("expected invalid, got {}", other.kind()),
     }
 }
+
+#[test]
+fn reading_limit_never_hides_an_ambiguity() {
+    let one = Options {
+        max_readings: 1,
+        ..Options::default()
+    };
+    match interpret("COCl2", &dictionary(), &one) {
+        Interpretation::Ambiguous { readings, .. } => assert_eq!(readings.len(), 2),
+        other => panic!("expected ambiguous, got {}", other.kind()),
+    }
+}
+
+#[test]
+fn caret_charges_do_not_take_a_count() {
+    assert_ne!(
+        read("Fe2^+").top().map(|r| r.smiles.clone()),
+        Some(canon("[Fe+2]"))
+    );
+    assert_eq!(error_code("C^12-"), Code::CountOutOfRange);
+}
+
+#[test]
+fn pathological_inputs_stop_at_the_search_limit() {
+    let quick = Options {
+        suggestions: false,
+        ..Options::default()
+    };
+    for input in [
+        "CH3SSSSSSSS100",
+        "MnMnMnMnMnMnMnMnMnMnMnMnMnMnMnMnMnMnMnMnO",
+    ] {
+        let result = interpret(input, &dictionary(), &quick);
+        assert!(
+            matches!(&result, Interpretation::Invalid { diagnostics } if diagnostics[0].code == Code::TooComplex)
+                || !matches!(result, Interpretation::Invalid { .. }),
+            "{input}: {}",
+            result.kind()
+        );
+    }
+}

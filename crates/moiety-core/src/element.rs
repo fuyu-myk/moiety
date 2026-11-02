@@ -154,6 +154,9 @@ static TABLE: [Data; 118] = [
     d("Og", &[0], X),
 ];
 
+/// Largest formal charge, in magnitude, that a single atom may carry.
+pub const MAX_ATOM_CHARGE: u8 = 4;
+
 /// A chemical element, identified by its atomic number.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Element(u8);
@@ -228,12 +231,17 @@ impl Element {
 
     /// Allowed valences of the atom carrying formal charge `charge`, lowest first.
     ///
+    /// No atom carries a charge larger than 4 in magnitude.
+    ///
     /// Nonmetals take the lowest valence of the isoelectronic element `Z - charge`.
     /// Metals lose one valence per unit of positive charge and take no negative charge.
     #[must_use]
     pub fn charged_valences(self, charge: i8) -> Vec<u8> {
         if charge == 0 {
             return self.valences().to_vec();
+        }
+        if charge.unsigned_abs() > MAX_ATOM_CHARGE {
+            return Vec::new();
         }
         if self.is_metal() {
             let Ok(loss) = u8::try_from(charge) else {
@@ -334,6 +342,7 @@ mod tests {
         assert_eq!(iron.charged_valences(3), vec![0]);
         assert_eq!(iron.charged_valences(2), vec![0, 1]);
         assert!(iron.charged_valences(-1).is_empty());
+        assert!(Element::O.charged_valences(-5).is_empty());
     }
 
     #[test]

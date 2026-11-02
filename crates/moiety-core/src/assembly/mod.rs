@@ -79,6 +79,13 @@ impl<'a> Ctx<'a> {
         }
     }
 
+    /// Charges `n` search states to the budget. Returns `false` once the budget is spent.
+    pub fn spend(&self, n: usize) -> bool {
+        let left = self.budget.get().saturating_sub(n);
+        self.budget.set(left);
+        left > 0
+    }
+
     pub fn fail(&mut self, failure: Failure) {
         if self
             .failure
@@ -95,7 +102,7 @@ impl<'a> Ctx<'a> {
             failure: self.failure,
             underdetermined: self.underdetermined,
             truncated: self.truncated,
-            exhausted: self.exhausted,
+            exhausted: self.exhausted || self.budget.get() == 0,
         }
     }
 }
@@ -148,26 +155,25 @@ pub(crate) fn assemble_salt(
             _ => None,
         })
         .collect();
-    let mut combos: Vec<Vec<u8>> = vec![Vec::new()];
-    for (element, _, _) in &cations {
-        combos = combos
-            .into_iter()
-            .flat_map(|combo| {
-                element
-                    .valences()
-                    .iter()
-                    .filter(|&&v| v >= 1)
-                    .map(move |&v| {
-                        let mut next = combo.clone();
-                        next.push(v);
-                        next
-                    })
-            })
-            .collect();
+    let choices: Vec<Vec<u8>> = cations
+        .iter()
+        .map(|(element, _, _)| {
+            element
+                .valences()
+                .iter()
+                .copied()
+                .filter(|&v| v >= 1)
+                .collect()
+        })
+        .collect();
+    if choices.iter().any(Vec::is_empty) {
+        return Assembly::default();
     }
     let rest_span = Span::new(rest.items[0].unit.span.start, tree.span.end);
     let mut result = Assembly::default();
-    for combo in combos {
+    let mut odometer = vec![0usize; choices.len()];
+    loop {
+        let combo: Vec<u8> = odometer.iter().zip(&choices).map(|(&i, c)| c[i]).collect();
         let total: i32 = cations
             .iter()
             .zip(&combo)
@@ -179,6 +185,10 @@ pub(crate) fn assemble_salt(
             ..tree.clone()
         };
         let mut ctx = Ctx::new(dictionary, budget, &anion);
+        if !ctx.spend(1) {
+            result.exhausted = true;
+            return result;
+        }
         let mut initial = State {
             charge_left: -total,
             score: -1,
@@ -198,8 +208,23 @@ pub(crate) fn assemble_salt(
                 .map(derive),
         );
         result.truncated |= ctx.truncated;
+        result.exhausted |= ctx.exhausted || budget.get() == 0;
+        if result.exhausted || !advance(&mut odometer, &choices) {
+            return result;
+        }
     }
-    result
+}
+
+/// Steps a mixed-radix counter. Returns `false` after the last combination.
+fn advance(odometer: &mut [usize], choices: &[Vec<u8>]) -> bool {
+    for (digit, options) in odometer.iter_mut().zip(choices).rev() {
+        *digit += 1;
+        if *digit < options.len() {
+            return true;
+        }
+        *digit = 0;
+    }
+    false
 }
 
 fn run(tree: &Tree, seq: &Seq, ctx: &mut Ctx<'_>, initial: State) -> Vec<State> {
@@ -272,9 +297,7 @@ pub(crate) fn assemble_seq(
             ctx.fail(open_valence(dead, progress));
         }
         next.retain(|s| !s.has_dead_atom() && !unreachable(s));
-        let left = ctx.budget.get().saturating_sub(next.len().max(1));
-        ctx.budget.set(left);
-        if left == 0 {
+        if !ctx.spend(next.len().max(1)) {
             ctx.exhausted = true;
             return Vec::new();
         }
@@ -385,7 +408,7 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                 );
                 return Vec::new();
             }
-            let bonded = bond_all(state, host, &heads, bond);
+            let bonded = bond_all(state, host, &heads, bond, ctx);
             if bonded.is_empty() {
                 ctx.fail(bond_failure(unit.span, bond.map(|b| b.1)));
             }
@@ -435,7 +458,7 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                         .filter(|&&h| state.atoms[h].element_kind() != Some(Element::H))
                         .count(),
                 );
-                let bonded = bond_all(state, head, &heads, explicit);
+                let bonded = bond_all(state, head, &heads, explicit, ctx);
                 if bonded.is_empty() {
                     ctx.fail(bond_failure(unit.span, explicit.map(|b| b.1)));
                 }
@@ -493,19 +516,27 @@ fn bond_all(
     center: usize,
     heads: &[usize],
     bond: Option<(BondOrder, Span)>,
+    ctx: &mut Ctx<'_>,
 ) -> Vec<State> {
     let mut partial = vec![state];
     for &head in heads {
         let mut next = Vec::new();
         for s in partial {
             for k in s.orders(center, head, bond.map(|b| b.0)) {
+                if !ctx.spend(1) {
+                    ctx.exhausted = true;
+                    return Vec::new();
+                }
                 let mut s2 = s.clone();
                 s2.link(center, head, k, bond.map(|b| b.1));
                 absorb_hydrogen(&mut s2, center, head);
                 next.push(s2);
             }
         }
-        next.truncate(BOND_COMBINATION_LIMIT);
+        if next.len() > BOND_COMBINATION_LIMIT {
+            ctx.truncated = true;
+            next.truncate(BOND_COMBINATION_LIMIT);
+        }
         partial = next;
     }
     partial
@@ -542,7 +573,7 @@ pub(crate) fn finish_pending(mut state: State, ctx: &mut Ctx<'_>) -> Vec<State> 
         .collect();
     let explicit = pending.iter().find_map(|p| p.bond);
     let room = state.atoms[anchor].free();
-    let bonded = bond_all(state, anchor, &heads, explicit);
+    let bonded = bond_all(state, anchor, &heads, explicit, ctx);
     if bonded.is_empty() {
         let mut failure = Failure::new(
             Code::NoAnchor,

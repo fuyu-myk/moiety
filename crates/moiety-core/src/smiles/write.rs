@@ -3,36 +3,44 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::{aromatic_symbol, default_valence};
 use crate::molecule::{Atom, AtomKind, BondOrder, Molecule};
 
+/// Most leaves explored when breaking symmetry ties in one component.
+const TIE_BREAK_LIMIT: usize = 128;
+
 /// Writes canonical SMILES.
 ///
-/// Atoms are ranked by iterative refinement of their local invariants, ties are
-/// broken one class at a time, and each component is written by a depth-first
-/// walk that visits neighbours in rank order. Components are sorted and joined
-/// with `.`.
+/// Each component is canonicalized on its own. Atoms are ranked by iterative
+/// refinement of their local invariants. Where refinement leaves a tie, every
+/// member of the lowest tied class is tried in turn and the smallest resulting
+/// string is kept, so the output does not depend on atom order. Each string is
+/// written by a depth-first walk that visits neighbours in rank order.
+/// Components are sorted and joined with `.`.
 #[must_use]
 pub fn write(molecule: &Molecule) -> String {
-    let adjacency = molecule.adjacency();
-    let ranks = canonical_ranks(molecule, &adjacency);
     let mut parts: Vec<String> = molecule
         .components()
-        .into_iter()
-        .map(|component| {
-            let start = *component
-                .iter()
-                .min_by_key(|&&atom| (adjacency[atom].len(), ranks[atom]))
-                .expect("components are non-empty");
-            Writer::new(molecule, &adjacency, &ranks).component(start)
-        })
+        .iter()
+        .map(|component| canonical_component(&submolecule(molecule, component)))
         .collect();
     parts.sort();
     parts.join(".")
 }
 
-/// Canonical rank of every atom: equal ranks only for symmetry-equivalent atoms.
-pub(crate) fn canonical_ranks(
-    molecule: &Molecule,
-    adjacency: &[Vec<(usize, usize)>],
-) -> Vec<usize> {
+fn submolecule(molecule: &Molecule, atoms: &[usize]) -> Molecule {
+    let mut index = vec![None; molecule.atoms().len()];
+    let mut part = Molecule::new();
+    for &atom in atoms {
+        index[atom] = Some(part.add_atom(molecule.atoms()[atom]));
+    }
+    for bond in molecule.bonds() {
+        if let (Some(a), Some(b)) = (index[bond.a], index[bond.b]) {
+            part.add_bond(a, b, bond.order);
+        }
+    }
+    part
+}
+
+fn canonical_component(molecule: &Molecule) -> String {
+    let adjacency = molecule.adjacency();
     let atoms = molecule.atoms();
     let invariants: Vec<(u8, bool, usize, u8, i8)> = atoms
         .iter()
@@ -52,16 +60,42 @@ pub(crate) fn canonical_ranks(
         })
         .collect();
     let mut ranks = dense_rank(&invariants);
-    refine(molecule, adjacency, &mut ranks);
-    while let Some(tied) = lowest_tie(&ranks) {
-        for rank in &mut ranks {
-            *rank = *rank * 2 + 1;
+    refine(molecule, &adjacency, &mut ranks);
+    let mut best = None;
+    let mut leaves = 0;
+    search(molecule, &adjacency, ranks, &mut best, &mut leaves);
+    best.expect("the search reaches at least one leaf")
+}
+
+/// Breaks the lowest remaining tie every possible way and keeps the smallest string.
+fn search(
+    molecule: &Molecule,
+    adjacency: &[Vec<(usize, usize)>],
+    ranks: Vec<usize>,
+    best: &mut Option<String>,
+    leaves: &mut usize,
+) {
+    let Some(tied) = lowest_tie(&ranks) else {
+        *leaves += 1;
+        let start = (0..ranks.len())
+            .min_by_key(|&atom| (adjacency[atom].len(), ranks[atom]))
+            .expect("components are non-empty");
+        let written = Writer::new(molecule, adjacency, &ranks).component(start);
+        if best.as_ref().is_none_or(|current| written < *current) {
+            *best = Some(written);
         }
-        ranks[tied] -= 1;
-        ranks = dense_rank(&ranks);
-        refine(molecule, adjacency, &mut ranks);
+        return;
+    };
+    for member in tied {
+        if *leaves >= TIE_BREAK_LIMIT && best.is_some() {
+            return;
+        }
+        let mut split: Vec<usize> = ranks.iter().map(|&rank| rank * 2 + 1).collect();
+        split[member] -= 1;
+        let mut split = dense_rank(&split);
+        refine(molecule, adjacency, &mut split);
+        search(molecule, adjacency, split, best, leaves);
     }
-    ranks
 }
 
 fn refine(molecule: &Molecule, adjacency: &[Vec<(usize, usize)>], ranks: &mut Vec<usize>) {
@@ -87,13 +121,18 @@ fn refine(molecule: &Molecule, adjacency: &[Vec<(usize, usize)>], ranks: &mut Ve
     }
 }
 
-fn lowest_tie(ranks: &[usize]) -> Option<usize> {
+/// Every atom of the lowest rank shared by more than one atom.
+fn lowest_tie(ranks: &[usize]) -> Option<Vec<usize>> {
     let mut counts = BTreeMap::new();
     for &rank in ranks {
         *counts.entry(rank).or_insert(0usize) += 1;
     }
     let (tied_rank, _) = counts.into_iter().find(|&(_, count)| count > 1)?;
-    ranks.iter().position(|&rank| rank == tied_rank)
+    Some(
+        (0..ranks.len())
+            .filter(|&atom| ranks[atom] == tied_rank)
+            .collect(),
+    )
 }
 
 fn distinct(ranks: &[usize]) -> usize {
@@ -295,6 +334,11 @@ mod tests {
     }
 
     #[test]
+    fn regular_graphs_that_refinement_cannot_split_agree() {
+        assert_eq!(canon("C12C3C1C1C4C(C23)C14"), canon("C12C3C1C3C1C3C2C31"));
+    }
+
+    #[test]
     fn different_molecules_differ() {
         assert_ne!(canon("CCO"), canon("COC"));
         assert_ne!(canon("CC(C)CC"), canon("CCCCC"));
@@ -339,6 +383,8 @@ mod tests {
                 "c1ccc2ccccc2c1",
                 "CC(C)(C)OC(=O)N(C)CC(=O)[O-].[Na+]",
                 "*OC(C)=O",
+                "C12C3C1C1C4C(C23)C14",
+                "O.O.O.[Cu+2].[O-]S(=O)(=O)[O-]",
             ]),
             shuffle in proptest::collection::vec(proptest::num::usize::ANY, 32),
         ) {

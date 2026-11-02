@@ -5,8 +5,11 @@ use crate::element::Element;
 use crate::molecule::BondOrder;
 use crate::span::Span;
 
-/// Largest count the lexer accepts.
+/// Largest count the grammar accepts.
 pub const MAX_COUNT: u32 = 100;
+
+/// Largest written charge, in magnitude, the grammar accepts.
+pub const MAX_CHARGE: u32 = 8;
 
 /// Bracket style of a group.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -123,8 +126,7 @@ impl Lattice {
 
     /// Complete paths through the lattice as lists of edge indices, at most `limit` of them.
     /// The flag is set when paths were dropped.
-    #[must_use]
-    pub fn paths(&self, limit: usize) -> (Vec<Vec<usize>>, bool) {
+    pub(crate) fn paths(&self, limit: usize) -> (Vec<Vec<usize>>, bool) {
         let mut paths = Vec::new();
         let mut current = Vec::new();
         let mut truncated = false;

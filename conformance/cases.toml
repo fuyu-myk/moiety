@@ -2077,3 +2077,70 @@ input = "cis-CH3CH=CHCH3"
 expect = "unique"
 smiles = ["CC=CC"]
 warnings = ["CF0301"]
+
+# Regression cases from the v0.1.0 code review
+
+[[case]]
+id = "review/long-repeated-chain"
+corpus = "adversarial"
+input = "CH2(CH)14CH2"
+expect = "unique"
+smiles = ["C=CC=CC=CC=CC=CC=CC=CC=C"]
+note = "Every copy between the first and the last is saturated by its links, so the alternating pattern is found without truncation."
+
+[[case]]
+id = "review/repeated-component-deduplicates"
+corpus = "adversarial"
+input = "COCl2.COCl2"
+expect = "ambiguous"
+smiles = ["O=C(Cl)Cl.O=C(Cl)Cl", "Cl[Co]Cl.O=C(Cl)Cl", "Cl[Co]Cl.Cl[Co]Cl"]
+classes = ["symbol-segmentation"]
+
+[[case]]
+id = "review/acetyl-group-or-acyl-anion"
+corpus = "adversarial"
+input = "CH3C(=O)-"
+expect = "ambiguous"
+smiles = ["*C(C)=O", "C[C-]=O"]
+classes = ["charge-vs-attachment"]
+note = "The dash sits on the carbon before the group, so attachment is preferred."
+
+[[case]]
+id = "review/sulfur-allotrope"
+corpus = "curated"
+input = "S8"
+expect = "underdetermined"
+reason = "molecular-formula"
+span = [0, 2]
+
+[[case]]
+id = "review/phosphorus-allotrope"
+corpus = "curated"
+input = "P4"
+expect = "underdetermined"
+reason = "molecular-formula"
+span = [0, 2]
+
+[[case]]
+id = "review/zero-caret-charge"
+corpus = "adversarial"
+input = "Fe^0+"
+expect = "invalid"
+code = "CF0107"
+span = [2, 5]
+
+[[case]]
+id = "review/caret-charge-too-large"
+corpus = "adversarial"
+input = "C^12-"
+expect = "invalid"
+code = "CF0107"
+span = [1, 5]
+
+[[case]]
+id = "review/stacked-subscripts-stay-bounded"
+corpus = "adversarial"
+input = "CH3SSSSSSSS100"
+expect = "invalid"
+code = "CF0003"
+span = [0, 14]

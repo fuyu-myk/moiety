@@ -5,6 +5,8 @@ use crate::aromatic::perceive_aromaticity;
 use crate::element::Element;
 use crate::molecule::{Atom, BondOrder, Molecule};
 
+const MAX_SMILES_CHARGE: i8 = 15;
+
 /// Reads a SMILES string into a molecule.
 ///
 /// Kekulé six-membered rings are perceived as aromatic, so `C1=CC=CC=C1` and
@@ -239,12 +241,14 @@ impl Reader<'_> {
         let mut hydrogens = 0;
         if self.peek() == Some(b'H') {
             self.pos += 1;
-            hydrogens = self.number().unwrap_or(1);
+            hydrogens = self.number("hydrogen count")?.unwrap_or(1);
         }
         let charge = self.charge()?;
         if self.peek() == Some(b':') {
             self.pos += 1;
-            self.number();
+            while self.peek().is_some_and(|b| b.is_ascii_digit()) {
+                self.pos += 1;
+            }
         }
         if self.peek() != Some(b']') {
             return Err(self.error("expected ']'"));
@@ -294,14 +298,24 @@ impl Reader<'_> {
         Ok((element, false))
     }
 
-    fn number(&mut self) -> Option<u8> {
+    /// Reads a run of digits as a number below 100, or `None` when there are no digits.
+    fn number(&mut self, what: &str) -> Result<Option<u8>, SmilesError> {
         let start = self.pos;
         while self.peek().is_some_and(|b| b.is_ascii_digit()) {
             self.pos += 1;
         }
+        if start == self.pos {
+            return Ok(None);
+        }
         std::str::from_utf8(&self.text[start..self.pos])
             .ok()
-            .and_then(|digits| digits.parse().ok())
+            .and_then(|digits| digits.parse::<u8>().ok())
+            .filter(|&n| n < 100)
+            .map(Some)
+            .ok_or_else(|| SmilesError {
+                position: start,
+                message: format!("{what} out of range"),
+            })
     }
 
     fn charge(&mut self) -> Result<i8, SmilesError> {
@@ -315,11 +329,17 @@ impl Reader<'_> {
         let mut magnitude: i8 = 1;
         while self.peek() == Some(sign_byte) {
             self.pos += 1;
-            magnitude += 1;
+            magnitude = magnitude
+                .checked_add(1)
+                .filter(|&m| m <= MAX_SMILES_CHARGE)
+                .ok_or_else(|| self.error("charge out of range"))?;
         }
         if magnitude == 1 {
-            if let Some(n) = self.number() {
-                magnitude = i8::try_from(n).map_err(|_| self.error("charge out of range"))?;
+            if let Some(n) = self.number("charge")? {
+                magnitude = i8::try_from(n)
+                    .ok()
+                    .filter(|&m| m <= MAX_SMILES_CHARGE)
+                    .ok_or_else(|| self.error("charge out of range"))?;
             }
         }
         Ok(sign * magnitude)
@@ -381,6 +401,21 @@ mod tests {
     fn perceives_kekule_benzene() {
         let molecule = parse("C1=CC=CC=C1").unwrap();
         assert!(molecule.atoms().iter().all(|a| a.aromatic));
+    }
+
+    #[test]
+    fn rejects_out_of_range_numbers() {
+        let many_plus = format!("[C{}]", "+".repeat(128));
+        assert_eq!(
+            parse(&many_plus).unwrap_err().message,
+            "charge out of range"
+        );
+        assert_eq!(parse("[C+300]").unwrap_err().message, "charge out of range");
+        assert_eq!(
+            parse("[CH300]").unwrap_err().message,
+            "hydrogen count out of range"
+        );
+        assert_eq!(parse("[C+16]").unwrap_err().message, "charge out of range");
     }
 
     #[test]

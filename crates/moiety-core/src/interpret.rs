@@ -51,7 +51,7 @@ impl ChargeConvention {
 pub struct Options {
     /// Representation of hypervalent nitrogen.
     pub charge_convention: ChargeConvention,
-    /// Most readings returned. Later readings are dropped with warning CF0303.
+    /// Most readings returned, never fewer than two. Later readings are dropped with warning CF0303.
     pub max_readings: usize,
     /// Whether invalid input triggers a search for a nearby formula that reads.
     pub suggestions: bool,
@@ -73,6 +73,16 @@ impl Default for Options {
 /// Reads a condensed formula and returns every reading that survives valence resolution.
 #[must_use]
 pub fn interpret(input: &str, dictionary: &Dictionary, options: &Options) -> Interpretation {
+    interpret_within(input, dictionary, options, None)
+}
+
+/// [`interpret`], drawing search states from `shared` instead of a fresh budget per component.
+pub(crate) fn interpret_within(
+    input: &str,
+    dictionary: &Dictionary,
+    options: &Options,
+    shared: Option<&Cell<usize>>,
+) -> Interpretation {
     let normalized = normalize(input);
     let whole = Span::new(0, input.len());
     if input.len() > MAX_INPUT_LEN {
@@ -112,7 +122,7 @@ pub fn interpret(input: &str, dictionary: &Dictionary, options: &Options) -> Int
     }
     let mut outcomes = Vec::new();
     for span in components {
-        match component(input, &normalized, span, dictionary, options) {
+        match component(input, &normalized, span, dictionary, options, shared) {
             Outcome::Readings(readings) => outcomes.push(readings),
             Outcome::Underdetermined(span, reason) => {
                 return Interpretation::Underdetermined { span, reason };
@@ -163,6 +173,7 @@ fn component(
     span: Span,
     dictionary: &Dictionary,
     options: &Options,
+    shared: Option<&Cell<usize>>,
 ) -> Outcome {
     let original = |s: Span| normalized.to_original(s);
     let lattice = match lex(normalized.text(), span, dictionary) {
@@ -220,20 +231,21 @@ fn component(
     }
     let lexical: Vec<i32> = trees
         .iter()
-        .map(|t| lexical_score(&lattice, normalized.text(), t))
+        .map(|t| lexical_score(&lattice, normalized.text(), t, dictionary))
         .collect();
     let mut candidates = Vec::new();
     let mut failure: Option<(Failure, i32)> = None;
     let mut underdetermined = None;
     let mut truncated = paths_truncated;
     let mut exhausted = false;
-    let budget = Cell::new(options.search_limit);
+    let local = Cell::new(options.search_limit);
+    let budget = shared.unwrap_or(&local);
     for salt in [false, true] {
         for (tree, &score) in trees.iter().zip(&lexical) {
             let assembly = if salt {
-                assemble_salt(tree, dictionary, &budget)
+                assemble_salt(tree, dictionary, budget)
             } else {
-                assemble(tree, dictionary, &budget)
+                assemble(tree, dictionary, budget)
             };
             truncated |= assembly.truncated || assembly.exhausted;
             exhausted |= assembly.exhausted;
@@ -337,8 +349,8 @@ fn rank(
             .cmp(&a[0].score)
             .then_with(|| a_smiles.cmp(b_smiles))
     });
-    let dropped = groups.len() > options.max_readings;
-    groups.truncate(options.max_readings.max(1));
+    let dropped = groups.len() > reading_limit(options);
+    groups.truncate(reading_limit(options));
     let choices: Vec<Choices> = groups
         .iter()
         .map(|(_, members)| Choices::of(members, lattice))
@@ -507,10 +519,10 @@ fn combine(
                 });
             }
         }
-        if next.len() > options.max_readings {
+        if next.len() > reading_limit(options) {
             dropped = true;
             next.sort_by_key(|p| -p.score);
-            next.truncate(options.max_readings);
+            next.truncate(reading_limit(options));
         }
         combined = next;
     }
@@ -518,6 +530,7 @@ fn combine(
         partial.smiles = partial.molecule.to_smiles();
     }
     combined.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.smiles.cmp(&b.smiles)));
+    let combined = merge_duplicates(combined);
     let mut classes: Vec<AmbiguityClass> = combined
         .iter()
         .flat_map(|p| p.classes.iter().copied())
@@ -555,7 +568,41 @@ fn combine(
     }
 }
 
-fn lexical_score(lattice: &Lattice, text: &str, tree: &Tree) -> i32 {
+/// Most readings returned: the option, but never fewer than two, so an ambiguous
+/// result always shows an alternative to its first reading.
+fn reading_limit(options: &Options) -> usize {
+    options.max_readings.max(2)
+}
+
+/// Folds readings with the same SMILES into the best-scoring one, which must come first.
+fn merge_duplicates(sorted: Vec<Partial>) -> Vec<Partial> {
+    let mut merged: Vec<Partial> = Vec::new();
+    for partial in sorted {
+        match merged.iter_mut().find(|m| m.smiles == partial.smiles) {
+            Some(kept) => {
+                for ambiguity in partial.ambiguities {
+                    push_unique(&mut kept.ambiguities, ambiguity);
+                }
+                for class in partial.classes {
+                    push_class(&mut kept.classes, class);
+                }
+            }
+            None => merged.push(partial),
+        }
+    }
+    for partial in &mut merged {
+        let mut seen = Vec::new();
+        partial.warnings.retain(|w| {
+            let key = (w.code, w.primary.span);
+            let fresh = !seen.contains(&key);
+            seen.push(key);
+            fresh
+        });
+    }
+    merged
+}
+
+fn lexical_score(lattice: &Lattice, text: &str, tree: &Tree, dictionary: &Dictionary) -> i32 {
     let edges = lattice.edges();
     let mut priors: i32 = tree.path.iter().map(|&i| edges[i].prior).sum();
     if let [.., count, sign] = tree.path[..] {
@@ -574,16 +621,51 @@ fn lexical_score(lattice: &Lattice, text: &str, tree: &Tree) -> i32 {
         return priors;
     };
     let as_charge = matches!(tree.tail, Tail::Charge(..));
-    let prefers_marker = last_symbol_is_carbon(&text[lattice.span().start..dash.start]);
+    let prefers_marker = last_symbol_is_carbon(&text[lattice.span().start..dash.start], dictionary);
     priors - i32::from(as_charge == prefers_marker)
 }
 
-fn last_symbol_is_carbon(prefix: &str) -> bool {
-    let trimmed = prefix.trim_end_matches(|c: char| c.is_ascii_digit() || c == 'H');
-    let Some(start) = trimmed.rfind(|c: char| c.is_ascii_uppercase()) else {
-        return false;
-    };
-    trimmed.ends_with(')') || trimmed.ends_with(']') || &trimmed[start..] == "C"
+/// Whether the atom a trailing `-` would sit on is carbon: the last element symbol
+/// before it, skipping hydrogens, counts and whole groups, or the attachment atom
+/// of a dictionary spelling that ends there.
+fn last_symbol_is_carbon(prefix: &str, dictionary: &Dictionary) -> bool {
+    let mut rest = prefix;
+    loop {
+        rest = rest.trim_end_matches(|c: char| c.is_ascii_digit() || c == 'H');
+        let Some(last) = rest.chars().last() else {
+            return false;
+        };
+        if !matches!(last, ')' | ']') {
+            break;
+        }
+        let mut depth = 0usize;
+        let open = rest.char_indices().rev().find(|&(_, c)| {
+            match c {
+                ')' | ']' => depth += 1,
+                '(' | '[' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+            depth == 0
+        });
+        match open {
+            Some((at, _)) => rest = &rest[..at],
+            None => return false,
+        }
+    }
+    let spelled = dictionary.entries().iter().find_map(|entry| {
+        entry
+            .spellings()
+            .iter()
+            .any(|spelling| rest.ends_with(spelling.as_str()))
+            .then(|| entry.attachments().first())
+            .flatten()
+            .and_then(|site| entry.fragment().atoms()[site.atom].element())
+    });
+    if let Some(element) = spelled {
+        return element == Element::C;
+    }
+    rest.rfind(|c: char| c.is_ascii_uppercase())
+        .is_some_and(|start| &rest[start..] == "C")
 }
 
 /// Applies the charge convention and returns the indices of nitrogen atoms it changed.
@@ -614,7 +696,7 @@ fn apply_convention(molecule: &mut Molecule, convention: ChargeConvention) -> Ve
                 && other.charge == if other_charge == -1 { 0 } else { -1 }
         });
         if let Some((o, bond)) = oxygen {
-            molecule.bonds_mut()[bond].order = to;
+            molecule.set_bond_order(bond, to);
             molecule.atoms_mut()[n].charge = want_charge;
             molecule.atoms_mut()[o].charge = other_charge;
             changed.push(n);
@@ -629,7 +711,7 @@ fn title(code: Code) -> &'static str {
         Code::UnclosedGroup => "unclosed group",
         Code::UnmatchedClose => "unmatched closing bracket",
         Code::EmptyGroup => "empty group",
-        Code::CountOutOfRange => "count out of range",
+        Code::CountOutOfRange => "count or charge out of range",
         _ => "unexpected token",
     }
 }

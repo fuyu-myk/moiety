@@ -40,6 +40,15 @@ fn check(input: &str, result: &Interpretation) -> Result<(), TestCaseError> {
             }
             if let Interpretation::Ambiguous { readings, classes } = result {
                 prop_assert!(readings.len() >= 2);
+                let mut distinct: Vec<&str> = readings.iter().map(|r| r.smiles.as_str()).collect();
+                distinct.sort_unstable();
+                distinct.dedup();
+                prop_assert_eq!(
+                    distinct.len(),
+                    readings.len(),
+                    "{} repeats a reading",
+                    input
+                );
                 prop_assert!(!classes.is_empty(), "{} is ambiguous with no class", input);
             }
         }

@@ -45,7 +45,7 @@ pub fn perceive_aromaticity(molecule: &mut Molecule) {
             let next = ring[(i + 1) % ring.len()];
             molecule.atoms_mut()[atom].aromatic = true;
             if let Some(&(_, bond)) = adjacency[atom].iter().find(|&&(other, _)| other == next) {
-                molecule.bonds_mut()[bond].order = BondOrder::Aromatic;
+                molecule.set_bond_order(bond, BondOrder::Aromatic);
             }
         }
     }
@@ -89,13 +89,14 @@ pub fn kekulize(molecule: &Molecule) -> Option<Molecule> {
         return None;
     }
     let mut result = molecule.clone();
-    for bond in result.bonds_mut() {
+    for (index, bond) in molecule.bonds().iter().enumerate() {
         if bond.order == BondOrder::Aromatic {
-            bond.order = if matched[bond.a] == Some(bond.b) {
+            let order = if matched[bond.a] == Some(bond.b) {
                 BondOrder::Double
             } else {
                 BondOrder::Single
             };
+            result.set_bond_order(index, order);
         }
     }
     for atom in result.atoms_mut() {

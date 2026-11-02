@@ -1,6 +1,6 @@
 use crate::diagnostic::Code;
 use crate::element::Element;
-use crate::lexer::{Bracket, Edge, EdgeKind, Lattice, MAX_COUNT};
+use crate::lexer::{Bracket, Edge, EdgeKind, Lattice, MAX_CHARGE, MAX_COUNT};
 use crate::molecule::BondOrder;
 use crate::span::Span;
 
@@ -91,7 +91,7 @@ impl Tree {
             heavy_count |= element != Element::H && item.unit.count() > 1;
             seen.push(element);
         }
-        seen.len() >= 3 || (seen.len() == 2 && heavy_count)
+        seen.len() >= 3 || heavy_count
     }
 }
 
@@ -108,10 +108,13 @@ pub(crate) fn parse(lattice: &Lattice, path: &[usize]) -> Result<Vec<Tree>, Synt
     };
     let tree = parser.component(lattice.span(), path)?;
     let mut trees = vec![tree.clone()];
-    if let Tail::Charge(sign @ (1 | -1), sign_span) = tree.tail {
+    let ends_with_sign = tokens
+        .last()
+        .is_some_and(|e| matches!(e.kind, EdgeKind::Sign(_)));
+    if let (Tail::Charge(sign @ (1 | -1), sign_span), true) = (tree.tail, ends_with_sign) {
         if let Some(last) = tree.seq.items.last() {
             if let Some((count, count_span)) = last.unit.count {
-                if count_span.end == sign_span.start {
+                if count_span.end == sign_span.start && count <= MAX_CHARGE {
                     let mut split = tree;
                     let unit = &mut split.seq.items.last_mut().expect("checked above").unit;
                     unit.count = None;
@@ -178,7 +181,17 @@ impl Parser<'_> {
                 let tail = match edge.kind {
                     EdgeKind::Marker(order) => Tail::Marker(order, edge.span),
                     EdgeKind::Sign(sign) => Tail::Charge(i32::from(sign), edge.span),
-                    EdgeKind::Charge(charge) => Tail::Charge(charge, edge.span),
+                    EdgeKind::Charge(charge) => {
+                        let magnitude = charge.unsigned_abs();
+                        if !(1..=MAX_CHARGE).contains(&magnitude) {
+                            return Err(Self::error(
+                                Code::CountOutOfRange,
+                                edge.span,
+                                &format!("charges must be between 1 and {MAX_CHARGE}"),
+                            ));
+                        }
+                        Tail::Charge(charge, edge.span)
+                    }
                     EdgeKind::Close(_) => {
                         return Err(Self::error(
                             Code::UnmatchedClose,
