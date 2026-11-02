@@ -128,8 +128,10 @@ A charged atom's valence follows its charge:
 ### 5.2 Bond restrictions
 
 - Multiple bonds are allowed only between two atoms that both belong to B C N O Si P S Se As Te Ge Sb Cl Br I Xe.
+- No bond joins two metals.
 - Transition metals (groups 3 to 11), lanthanides, actinides and every element with atomic number 104 or more bond only to heteroatoms: never to carbon and never to hydrogen. This is what keeps the cobalt reading of `CH3COOH` from surviving while the cobalt chloride reading of `COCl2` does.
 - An aromatic atom from a dictionary fragment takes only single bonds from outside its fragment.
+- A neutral atom using more than its lowest valence, such as sulfur in a sulfone or nitrogen in a nitro group, forms multiple bonds only to oxygen, and at most double ones. This keeps the expanded octet for `S=O`, `P=O` and `N=O` and stops it from inventing `S#S` or `N#N` bonds.
 
 ### 5.3 Free valence
 
@@ -141,7 +143,7 @@ Assembly turns one parse tree into zero or more molecules. It processes units fr
 
 ### 6.1 The host stack
 
-Assembly keeps a **host stack**: the atoms that later units may bond to, in the order they were created. The **host** for a new attachment is the most recently created atom on the stack that still has free valence. A unit that finds no host while atoms already exist fails with CF0204, "chain cannot continue past a terminal group".
+Assembly keeps a **host stack**: the atoms that later units may bond to, in the order they were created. The **host** for a new attachment is the most recently created atom on the stack that still has free valence. The search for it steps back over saturated atoms, which is how the second oxygen of `COOH` reaches the carbon after the first takes a double bond. It does not step back past a saturated atom that carries written hydrogens: a `CH2` or `NH` written mid-chain is a chain link, so nothing after it bonds to an atom before it. A unit that finds no host while atoms already exist fails with CF0204, "chain cannot continue past a terminal group".
 
 Atoms inside a parenthesized branch are not pushed on the outer stack. Atoms created by a subscript are.
 
@@ -149,13 +151,10 @@ Atoms inside a parenthesized branch are not pushed on the outer stack. Atoms cre
 
 **Atom `X`.** Create `X` with each allowed valence in turn. If a host exists, bond it to `X`. Otherwise `X` starts the structure. Push `X`.
 
-**Subscripted atom `X n`, n of 2 or more.**
+**Subscripted atom `X n`, n of 2 or more.** A count on an atom is always a subscript: R1 applies to groups and abbreviations, not to atoms.
 
 - If `X` is carbon, the span encodes no connectivity and the tree is underdetermined (section 6.6).
-- Otherwise the tree forks into a **pendant** reading and, when every allowed valence of `X` is at least 2, a **chain** reading:
-  - Pendant: create `n` copies of `X`, each bonded to the same host. The host must have room for all of them.
-  - Chain: create `n` copies bonded in a row, the first to the host.
-  - In both readings every copy is pushed. `CO2H` reads as pendant oxygens and `CH3S2CH3` as a chain.
+- Otherwise create `n` copies of `X`, each bonded to the same host. The host must have room for all of them, or the tree fails with CF0208. Every copy is pushed, so `CO2H` reads as two oxygens on the carbon with the hydrogen on the open one. A disulfide is written `CH3SSCH3`; `CH3S2CH3` asks for two sulfurs on one methyl carbon and fails.
 
 **Abbreviation.** Insert the dictionary fragment. Its attachment atoms are the neighbors of the fragment's `*` atoms, which are removed.
 
@@ -164,9 +163,9 @@ Atoms inside a parenthesized branch are not pushed on the outer stack. Atoms cre
 - No attachments: the abbreviation must be the only unit of its component, otherwise CF0207.
 - A count `n` of 2 or more repeats the fragment by R1, treating one attachment as free 1 and two as free 2.
 
-**Group `( unit-seq )` with no count.** Assemble the inner sequence on its own, then bond the inner fragment's first open atom to the host as a branch. A bond written just inside the open bracket, as in `C(=O)`, sets the order of that branch bond. The branch's atoms are not pushed.
+**Group `( unit-seq )` with no count.** Assemble the inner sequence on its own and keep only the assemblies with the least free valence, so `(COOH)` is the carboxyl group and not a peroxide with three open valences. Then bond the inner fragment's first open atom to the host as a branch. A bond written just inside the open bracket, as in `C(=O)`, sets the order of that branch bond. The branch's atoms are not pushed.
 
-**Group with count `n` of 2 or more.** Assemble the inner sequence once, then apply R1.
+**Group with count `n` of 2 or more.** Assemble the inner sequence the same way, then apply R1.
 
 ### 6.3 R1, repeated groups
 
@@ -181,7 +180,7 @@ This rule alone separates `(CH3)2`, two pendant methyls, from `(CH2)4`, a four-c
 
 ### 6.4 R2, anchors for leading pendants
 
-Pendant-type units that appear before any atom exists (a subscripted atom read as pendants, a group, a counted abbreviation read as pendants) are held as **pending**. The first unit that is not pendant-type becomes the **anchor**: every pending copy bonds to it, and the anchor must have free valence for all of them. If it does not, the tree fails with CF0203.
+Pendant-type units that appear before any atom exists (a subscripted atom, a group, or a counted abbreviation with one attachment point) are held as **pending**. The first unit that is not pendant-type becomes the **anchor**: every pending copy bonds to it, and the anchor must have free valence for all of them. If it does not, the tree fails with CF0203.
 
 If the component ends while copies are still pending, the first copy becomes the anchor for the others. This reads `H2`, `Cl2`, `O2` and `(COOH)2` as single molecules.
 
@@ -245,7 +244,7 @@ Every reading of an `Ambiguous` result is compared with the top-ranked reading, 
 | Symbol segmentation | The tokens chosen inside one lattice region, where no abbreviation competes with an element of the same spelling |
 | Abbreviation shadowing | The tokens chosen inside a region where an abbreviation and an element share a spelling |
 | Charge vs attachment | The role of a trailing `-` |
-| Branch-point fork | An R1 or subscript fork, or the valence and bond orders that make a unit a pendant in one reading and a chain link in the other |
+| Branch-point fork | An R1 fork, or the valence and bond orders that make a unit a pendant in one reading and a chain link in the other |
 | Charge representation | Where a written charge was placed |
 
 Three more classes describe outcomes rather than competing readings:
@@ -263,7 +262,6 @@ A lattice region is a maximal span between two positions that every complete pat
 A reading's score is the sum of:
 
 - the priors of every lattice edge it used (section 3.3);
-- 0 for a pendant and -1 for a chain at a subscript fork;
 - 0 for a chain and -1 for a pendant at an R1 fork;
 - 0 for the preferred role of a trailing `-` and -1 for the other. Attachment is preferred when the last element symbol before the `-`, skipping `H` and digits, is carbon. Charge is preferred otherwise;
 - -1 for every single bond the assembly made between two atoms of N, O, S and Se, so that `CH3SOCH3` ranks the sulfoxide above the sulfenate ester;

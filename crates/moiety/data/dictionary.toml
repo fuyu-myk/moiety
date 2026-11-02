@@ -1,0 +1,302 @@
+# Default moiety abbreviation dictionary.
+#
+# Each entry defines a fragment in SMILES, where every `*` is an attachment
+# point. `spellings` are read with the attachment on the left, as in `COOH`;
+# `reversed` with the attachment on the right, as in `HOOC`.
+
+[dictionary]
+name = "moiety-default"
+version = "1.0.0"
+
+# Alkyl
+
+[[entry]]
+name = "methyl"
+smiles = "*C"
+spellings = ["Me"]
+
+[[entry]]
+name = "ethyl"
+smiles = "*CC"
+spellings = ["Et", "C2H5"]
+
+[[entry]]
+name = "vinyl"
+smiles = "*C=C"
+spellings = ["C2H3"]
+
+[[entry]]
+name = "n-propyl"
+smiles = "*CCC"
+spellings = ["Pr", "nPr", "n-Pr", "n-C3H7"]
+
+[[entry]]
+name = "isopropyl"
+smiles = "*C(C)C"
+spellings = ["iPr", "i-Pr", "i-C3H7"]
+
+[[entry]]
+name = "cyclopropyl"
+smiles = "*C1CC1"
+spellings = ["cPr", "c-Pr"]
+
+[[entry]]
+name = "n-butyl"
+smiles = "*CCCC"
+spellings = ["Bu", "nBu", "n-Bu", "n-C4H9"]
+
+[[entry]]
+name = "isobutyl"
+smiles = "*CC(C)C"
+spellings = ["iBu", "i-Bu"]
+
+[[entry]]
+name = "sec-butyl"
+smiles = "*C(C)CC"
+spellings = ["sBu", "s-Bu", "sec-Bu"]
+
+[[entry]]
+name = "tert-butyl"
+smiles = "*C(C)(C)C"
+spellings = ["tBu", "t-Bu", "tert-Bu", "t-C4H9"]
+
+[[entry]]
+name = "cyclohexyl"
+smiles = "*C1CCCCC1"
+spellings = ["Cy", "C6H11"]
+
+# Aryl and arylalkyl
+
+[[entry]]
+name = "phenyl"
+smiles = "*c1ccccc1"
+spellings = ["Ph", "C6H5"]
+
+[[entry]]
+name = "p-tolyl"
+smiles = "*c1ccc(C)cc1"
+spellings = ["Tol", "p-Tol"]
+
+[[entry]]
+name = "mesityl"
+smiles = "*c1c(C)cc(C)cc1C"
+spellings = ["Mes"]
+
+[[entry]]
+name = "benzyl"
+smiles = "*Cc1ccccc1"
+spellings = ["Bn"]
+
+[[entry]]
+name = "p-methoxybenzyl"
+smiles = "*Cc1ccc(OC)cc1"
+spellings = ["PMB"]
+
+[[entry]]
+name = "trityl"
+smiles = "*C(c1ccccc1)(c1ccccc1)c1ccccc1"
+spellings = ["Tr", "Trt"]
+
+# Acyl and sulfonyl
+
+[[entry]]
+name = "acetyl"
+smiles = "*C(C)=O"
+spellings = ["Ac"]
+
+[[entry]]
+name = "benzoyl"
+smiles = "*C(=O)c1ccccc1"
+spellings = ["Bz"]
+
+[[entry]]
+name = "pivaloyl"
+smiles = "*C(=O)C(C)(C)C"
+spellings = ["Piv"]
+
+[[entry]]
+name = "tosyl"
+smiles = "*S(=O)(=O)c1ccc(C)cc1"
+spellings = ["Ts"]
+
+[[entry]]
+name = "mesyl"
+smiles = "*S(C)(=O)=O"
+spellings = ["Ms"]
+
+[[entry]]
+name = "triflyl"
+smiles = "*S(=O)(=O)C(F)(F)F"
+spellings = ["Tf"]
+
+# Protecting groups
+
+[[entry]]
+name = "tert-butoxycarbonyl"
+smiles = "*C(=O)OC(C)(C)C"
+spellings = ["Boc", "CO2tBu", "CO2t-Bu"]
+reversed = ["tBuO2C", "t-BuO2C"]
+
+[[entry]]
+name = "benzyloxycarbonyl"
+smiles = "*C(=O)OCc1ccccc1"
+spellings = ["Cbz"]
+
+[[entry]]
+name = "methoxymethyl"
+smiles = "*COC"
+spellings = ["MOM"]
+
+[[entry]]
+name = "tetrahydropyranyl"
+smiles = "*C1CCCCO1"
+spellings = ["THP"]
+
+[[entry]]
+name = "trimethylsilyl"
+smiles = "*[Si](C)(C)C"
+spellings = ["TMS"]
+
+[[entry]]
+name = "triethylsilyl"
+smiles = "*[Si](CC)(CC)CC"
+spellings = ["TES"]
+
+[[entry]]
+name = "tert-butyldimethylsilyl"
+smiles = "*[Si](C)(C)C(C)(C)C"
+spellings = ["TBS", "TBDMS"]
+
+[[entry]]
+name = "triisopropylsilyl"
+smiles = "*[Si](C(C)C)(C(C)C)C(C)C"
+spellings = ["TIPS"]
+
+# Heteroatom-linked groups
+
+[[entry]]
+name = "methoxy"
+smiles = "*OC"
+spellings = ["OMe"]
+reversed = ["MeO"]
+
+[[entry]]
+name = "ethoxy"
+smiles = "*OCC"
+spellings = ["OEt"]
+reversed = ["EtO"]
+
+[[entry]]
+name = "tert-butoxy"
+smiles = "*OC(C)(C)C"
+spellings = ["OtBu", "Ot-Bu"]
+reversed = ["tBuO", "t-BuO"]
+
+[[entry]]
+name = "phenoxy"
+smiles = "*Oc1ccccc1"
+spellings = ["OPh"]
+reversed = ["PhO"]
+
+[[entry]]
+name = "benzyloxy"
+smiles = "*OCc1ccccc1"
+spellings = ["OBn"]
+reversed = ["BnO"]
+
+[[entry]]
+name = "acetoxy"
+smiles = "*OC(C)=O"
+spellings = ["OAc"]
+reversed = ["AcO"]
+
+[[entry]]
+name = "tosyloxy"
+smiles = "*OS(=O)(=O)c1ccc(C)cc1"
+spellings = ["OTs"]
+reversed = ["TsO"]
+
+[[entry]]
+name = "mesyloxy"
+smiles = "*OS(C)(=O)=O"
+spellings = ["OMs"]
+reversed = ["MsO"]
+
+[[entry]]
+name = "triflyloxy"
+smiles = "*OS(=O)(=O)C(F)(F)F"
+spellings = ["OTf"]
+reversed = ["TfO"]
+
+[[entry]]
+name = "acetamido"
+smiles = "*NC(C)=O"
+spellings = ["NHAc"]
+reversed = ["AcNH", "AcHN"]
+
+[[entry]]
+name = "tert-butoxycarbonylamino"
+smiles = "*NC(=O)OC(C)(C)C"
+spellings = ["NHBoc"]
+reversed = ["BocNH", "BocHN"]
+
+# Functional groups
+
+[[entry]]
+name = "carboxyl"
+smiles = "*C(=O)O"
+spellings = ["COOH", "CO2H"]
+reversed = ["HOOC", "HO2C"]
+
+[[entry]]
+name = "methoxycarbonyl"
+smiles = "*C(=O)OC"
+spellings = ["CO2Me", "COOMe"]
+reversed = ["MeO2C", "MeOOC"]
+
+[[entry]]
+name = "ethoxycarbonyl"
+smiles = "*C(=O)OCC"
+spellings = ["CO2Et", "COOEt"]
+reversed = ["EtO2C", "EtOOC"]
+
+[[entry]]
+name = "carbamoyl"
+smiles = "*C(N)=O"
+spellings = ["CONH2"]
+reversed = ["H2NOC", "H2NCO"]
+
+[[entry]]
+name = "formyl"
+smiles = "*C=O"
+spellings = ["CHO"]
+reversed = ["OHC"]
+
+[[entry]]
+name = "cyano"
+smiles = "*C#N"
+spellings = ["CN"]
+reversed = ["NC"]
+
+[[entry]]
+name = "nitro"
+smiles = "*[N+](=O)[O-]"
+spellings = ["NO2"]
+reversed = ["O2N"]
+
+[[entry]]
+name = "azido"
+smiles = "*N=[N+]=[N-]"
+spellings = ["N3"]
+
+[[entry]]
+name = "trifluoromethyl"
+smiles = "*C(F)(F)F"
+spellings = ["CF3"]
+reversed = ["F3C"]
+
+[[entry]]
+name = "sulfo"
+smiles = "*S(=O)(=O)O"
+spellings = ["SO3H"]
+reversed = ["HO3S"]

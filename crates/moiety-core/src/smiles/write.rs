@@ -19,7 +19,7 @@ pub fn write(molecule: &Molecule) -> String {
         .map(|component| {
             let start = *component
                 .iter()
-                .min_by_key(|&&atom| ranks[atom])
+                .min_by_key(|&&atom| (adjacency[atom].len(), ranks[atom]))
                 .expect("components are non-empty");
             Writer::new(molecule, &adjacency, &ranks).component(start)
         })
