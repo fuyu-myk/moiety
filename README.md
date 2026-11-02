@@ -90,9 +90,9 @@ The HTML page puts the formula above a card for every reading, with its rank, sc
 
 ## Playground
 
-The playground runs moiety in the browser: every reading is drawn as you type, with the same two-way highlighting as the HTML page. Underdetermined and invalid formulas say why they cannot be read, with the characters at fault underlined.
+The [playground](https://fuyu-myk.github.io/moiety/) runs moiety in the browser: every reading is drawn as you type, with the same two-way highlighting as the HTML page. Underdetermined and invalid formulas say why they cannot be read, with the characters at fault underlined.
 
-It is a static site in [playground](playground). `moiety-wasm` compiles the parser and the renderer to a WebAssembly module that exports three functions and needs no generated bindings, and a Web Worker runs it, so a slow formula never blocks typing. To build and serve it locally:
+It is a static site in [playground](playground), deployed to GitHub Pages from `main` by [.github/workflows/pages.yml](.github/workflows/pages.yml). `moiety-wasm` compiles the parser and the renderer to a WebAssembly module that exports three functions and needs no generated bindings, and a Web Worker runs it, so a slow formula never blocks typing. To build and serve it locally:
 
 ```text
 rustup target add wasm32-unknown-unknown
