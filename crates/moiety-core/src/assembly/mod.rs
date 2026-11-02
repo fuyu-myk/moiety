@@ -230,7 +230,8 @@ fn advance(odometer: &mut [usize], choices: &[Vec<u8>]) -> bool {
 fn run(tree: &Tree, seq: &Seq, ctx: &mut Ctx<'_>, initial: State) -> Vec<State> {
     let allowance = match tree.tail {
         Tail::Marker(order, _) => u32::from(order.valence()),
-        _ => 0,
+        Tail::Charge(charge, _) => charge.unsigned_abs(),
+        Tail::None => 0,
     };
     let mut resolved = Vec::new();
     for state in assemble_seq(seq, ctx, initial, Some(allowance)) {
@@ -602,6 +603,37 @@ pub(crate) fn finish_pending(mut state: State, ctx: &mut Ctx<'_>) -> Vec<State> 
         .collect()
 }
 
+/// Places charge still unplaced at the end on the atoms left open, when charging
+/// each of them closes its valence exactly. This reaches atoms inside groups,
+/// which are assembled before the written charge is known to apply to them.
+fn place_remaining_charge(state: &mut State) {
+    if state.charge_left == 0 {
+        return;
+    }
+    let sign: i8 = if state.charge_left > 0 { 1 } else { -1 };
+    let open: Vec<usize> = (0..state.atoms.len())
+        .filter(|&i| state.atoms[i].free() > 0)
+        .collect();
+    let fits = |i: usize| {
+        let atom = &state.atoms[i];
+        atom.charge == 0
+            && atom.free() == 1
+            && atom
+                .element_kind()
+                .is_some_and(|e| e != Element::H && e.charged_valences(sign).contains(&atom.used))
+    };
+    if open.len() != state.charge_left.unsigned_abs() as usize || !open.iter().all(|&i| fits(i)) {
+        return;
+    }
+    for i in open {
+        let atom = &mut state.atoms[i];
+        atom.charge = sign;
+        atom.valence = atom.used;
+        atom.budget_charge = true;
+    }
+    state.charge_left = 0;
+}
+
 /// Applies the trailing marker and checks rule R4.
 fn complete(mut state: State, tree: &Tree, ctx: &mut Ctx<'_>) -> Option<State> {
     if let Tail::Marker(order, span) = tree.tail {
@@ -618,6 +650,7 @@ fn complete(mut state: State, tree: &Tree, ctx: &mut Ctx<'_>) -> Option<State> {
         state.bond(host, star, order.valence(), Some(span));
         state.forward += 1;
     }
+    place_remaining_charge(&mut state);
     if state.atoms.iter().any(|a| a.free() > 0) {
         ctx.fail(open_valence(&state, ctx.component_end));
         return None;

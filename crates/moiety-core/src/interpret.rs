@@ -19,7 +19,7 @@ use crate::suggest::suggest;
 /// Version of the grammar this crate implements.
 pub const GRAMMAR_VERSION: u32 = 1;
 /// Version of the ranking policy this crate implements.
-pub const RANKING_POLICY_VERSION: u32 = 1;
+pub const RANKING_POLICY_VERSION: u32 = 2;
 /// Longest formula, in bytes, that [`interpret`] accepts.
 pub const MAX_INPUT_LEN: usize = 256;
 

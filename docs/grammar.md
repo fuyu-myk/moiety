@@ -2,7 +2,7 @@
 
 This document is the normative specification of the condensed-formula language that moiety reads. The reference implementation lives in `crates/moiety-core`, and the conformance suite in `conformance/` is the executable form of the rules below. Where this document and the implementation disagree, the implementation has a bug.
 
-Grammar version: **1**. Ranking policy version: **1**.
+Grammar version: **1**. Ranking policy version: **2**.
 
 ## 1. Scope
 
@@ -154,7 +154,7 @@ Atoms inside a parenthesized branch are not pushed on the outer stack. Atoms cre
 
 **Atom `X`.** Create `X` with each allowed valence in turn. If a host exists, bond it to `X`. Otherwise `X` starts the structure. Push `X`.
 
-**Hydrogen.** A hydrogen, with or without a count, bonds only to an open atom of the unit written immediately before it; it never steps back further. `H2NOH` is hydroxylamine, not an amine oxide with the last hydrogen on nitrogen.
+**Hydrogen.** A hydrogen, with or without a count, bonds only to an open atom of the unit written immediately before it; it never steps back further. `H2NOH` is hydroxylamine, not an amine oxide with the last hydrogen on nitrogen. The one exception: when that unit is a run of halogens, the hydrogen bonds to the atom they hang from, so `CF2H` is difluoromethyl.
 
 **Subscripted atom `X n`, n of 2 or more.** A count on an atom is always a subscript: R1 applies to groups and abbreviations, not to atoms.
 
@@ -209,6 +209,7 @@ A component that is written as a molecular formula and has no reading is also `U
 - A leading marker creates an attachment atom first, so the first unit bonds to it.
 - A trailing marker bonds an attachment atom to the host after the last unit.
 - A written charge `q`, between 1 and 8 in magnitude, is placed during assembly. No single atom carries a charge above 4 in magnitude. Atoms may take a charge of the same sign as `q` while charge remains to be placed. Charges larger than 1 in magnitude are only placed on a component of a single atom. All of `q` must be placed.
+- Charge still unplaced after the last unit goes on the atoms left open, when there is exactly one open atom per unit of charge and charging each closes its valence. This reaches atoms inside groups, so `CH3(CH2)3-` has a carbanion reading as `CH3CH2-` does.
 - Charges inside dictionary fragments are kept and do not count against `q`.
 
 ### 6.8 R4, saturation
@@ -262,7 +263,7 @@ Three more classes describe outcomes rather than competing readings:
 
 A lattice region is a maximal span between two positions that every complete path passes through, containing more than one edge sequence.
 
-### 7.3 Ranking policy, version 1
+### 7.3 Ranking policy, version 2
 
 A reading's score is the sum of:
 
@@ -271,9 +272,12 @@ A reading's score is the sum of:
 - 0 for the preferred role of a trailing `-` and -1 for the other. Attachment is preferred when the atom the `-` would sit on is carbon: the last element symbol before the `-`, skipping `H`, digits and whole parenthesized groups, or the attachment atom of a dictionary spelling that ends there. Charge is preferred otherwise, so `CH3C(=O)-` prefers the acetyl group and `CH3COO-` the acetate ion;
 - 0 for the preferred reading of a count written just before a trailing sign and -1 for the other. The count is preferably a subscript when it follows `H`, as in `CH2-`, and a charge magnitude otherwise, as in `Fe2+`;
 - -1 for every single bond the assembly made between two atoms of N, O, S and Se, so that `CH3SOCH3` ranks the sulfoxide above the sulfenate ester;
+- -2 for every written charge that lands on carbon, so `CH3CO-` ranks the acetyl group above the acyl anion;
 - -1 for a salt reading under R5.
 
 Readings are ordered by score, highest first, then by canonical SMILES. Ranks start at 1. The policy reorders and never deletes.
+
+Version 2 adds the rule for charges on carbon. Version 1 had no such rule.
 
 ### 7.4 Direction
 
@@ -329,6 +333,8 @@ reversed = ["HOOC", "HO2C"]
 ## 10. Conformance
 
 The suite in `conformance/cases.toml` lists inputs with their expected result kind, the expected readings in rank order as SMILES, the expected ambiguity classes, and for invalid inputs the expected code and primary span. Expected SMILES are compared after canonicalization, so any valid SMILES spelling is accepted.
+
+Differential testing against another implementation is described in `conformance/differential/README.md`.
 
 Metrics reported by the runner:
 

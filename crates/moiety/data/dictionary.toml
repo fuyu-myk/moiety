@@ -6,7 +6,7 @@
 
 [dictionary]
 name = "moiety-default"
-version = "1.0.0"
+version = "1.1.0"
 
 # Alkyl
 
@@ -59,6 +59,11 @@ spellings = ["sBu", "s-Bu", "sec-Bu"]
 name = "tert-butyl"
 smiles = "*C(C)(C)C"
 spellings = ["tBu", "t-Bu", "tert-Bu", "t-C4H9"]
+
+[[entry]]
+name = "pentafluoroethyl"
+smiles = "*C(F)(F)C(F)(F)F"
+spellings = ["C2F5"]
 
 [[entry]]
 name = "cyclohexyl"

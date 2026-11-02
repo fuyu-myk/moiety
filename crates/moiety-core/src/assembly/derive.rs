@@ -3,6 +3,9 @@ use super::state::State;
 use crate::element::Element;
 use crate::molecule::{Atom, Bond, BondOrder, Molecule};
 
+/// Ranking penalty for each written charge that lands on carbon (ranking policy 2).
+const CARBON_CHARGE_PENALTY: i32 = 2;
+
 pub(crate) fn pentavalent_nitrogen_without_oxo(state: &State) -> Option<usize> {
     (0..state.atoms.len()).find(|&i| {
         let atom = &state.atoms[i];
@@ -70,6 +73,12 @@ pub(crate) fn derive(state: State) -> Derivation {
             );
         }
     }
+    let carbon_charges: i32 = state
+        .atoms
+        .iter()
+        .filter(|a| a.budget_charge && a.element_kind() == Some(Element::C))
+        .map(|_| 1)
+        .sum();
     let charge_sites = state
         .atoms
         .iter()
@@ -80,7 +89,7 @@ pub(crate) fn derive(state: State) -> Derivation {
         molecule: Molecule::from_parts(atoms, bonds),
         atom_spans,
         bond_spans,
-        score: state.score,
+        score: state.score - CARBON_CHARGE_PENALTY * carbon_charges,
         forks: state.forks,
         forward: state.forward,
         backward: state.backward,

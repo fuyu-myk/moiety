@@ -115,12 +115,34 @@ impl State {
     }
 
     /// The host for a hydrogen: the most recent open atom of the unit written just before it.
+    ///
+    /// When that unit is a run of halogens, as the `F2` of `CF2H`, the hydrogen
+    /// bonds to the atom they hang from instead.
     pub fn hydrogen_host(&self) -> Option<usize> {
-        self.previous
+        if let Some(atom) = self
+            .previous
             .iter()
             .rev()
             .copied()
             .find(|&atom| self.atoms[atom].free() > 0)
+        {
+            return Some(atom);
+        }
+        let halogens = !self.previous.is_empty()
+            && self.previous.iter().all(|&atom| {
+                matches!(
+                    self.atoms[atom].element_kind(),
+                    Some(Element::F | Element::CL | Element::BR | Element::I)
+                )
+            });
+        if !halogens {
+            return None;
+        }
+        let host = self
+            .bonds
+            .iter()
+            .find_map(|bond| bond.other(self.previous[0]))?;
+        (self.atoms[host].free() > 0).then_some(host)
     }
 
     /// Bond orders that atoms `a` and `b` could form now.

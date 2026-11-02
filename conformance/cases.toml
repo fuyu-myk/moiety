@@ -18,7 +18,7 @@
 name = "moiety-conformance"
 version = "0.1.0"
 grammar = 1
-ranking = 1
+ranking = 2
 
 # Chains and branches
 
@@ -2019,8 +2019,8 @@ id = "invalid/radical-cation"
 corpus = "adversarial"
 input = "OH2+"
 expect = "invalid"
-code = "CF0202"
-span = [0, 3]
+code = "CF0205"
+span = [3, 4]
 
 [[case]]
 id = "invalid/metal-carbon-bond"
@@ -2144,3 +2144,38 @@ input = "CH3SSSSSSSS100"
 expect = "invalid"
 code = "CF0003"
 span = [0, 14]
+
+# Regression cases from differential testing against MolScribe
+
+[[case]]
+id = "differential/hydrogen-after-halogens"
+corpus = "curated"
+input = "-CF2H"
+expect = "unique"
+smiles = ["*C(F)F"]
+note = "A hydrogen after a run of halogens bonds to the atom they hang from."
+
+[[case]]
+id = "differential/pentafluoroethyl"
+corpus = "curated"
+input = "-C2F5"
+expect = "unique"
+smiles = ["*C(F)(F)C(F)(F)F"]
+
+[[case]]
+id = "differential/acetyl-written-right-to-left"
+corpus = "adversarial"
+input = "CH3CO-"
+expect = "ambiguous"
+smiles = ["*C(C)=O", "C[C-]=O"]
+classes = ["charge-vs-attachment"]
+note = "Ranking policy 2 ranks a written charge on carbon below the open valence."
+
+[[case]]
+id = "differential/charge-inside-a-group"
+corpus = "adversarial"
+input = "CH3(CH2)3-"
+expect = "ambiguous"
+smiles = ["*CCCC", "[CH2-]CCC"]
+classes = ["charge-vs-attachment"]
+note = "The written charge can land on an atom inside a repeated group, as it can in CH3CH2-."
