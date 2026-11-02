@@ -1,9 +1,14 @@
 (function () {
   "use strict";
 
-  var chars = Array.prototype.slice.call(document.querySelectorAll(".formula [data-offset]"));
-  var parts = Array.prototype.slice.call(document.querySelectorAll("svg [data-span]"));
+  var CHARS = ".formula [data-offset]";
+  var PARTS = "[data-span]";
   var selected = null;
+
+  // Queried on every use, so content the page replaces is traced too.
+  function all(selector) {
+    return Array.prototype.slice.call(document.querySelectorAll(selector));
+  }
 
   function spanOf(el) {
     if (el.hasAttribute("data-span")) {
@@ -18,10 +23,10 @@
 
   // A part lights up its own characters only; characters light up every part they produced.
   function show(span, part) {
-    chars.forEach(function (c) {
+    all(CHARS).forEach(function (c) {
       c.classList.toggle("hl", span !== null && overlaps(spanOf(c), span));
     });
-    parts.forEach(function (p) {
+    all(PARTS).forEach(function (p) {
       var lit = span !== null && (part ? p === part : overlaps(spanOf(p), span));
       p.classList.toggle("hl", lit);
     });
@@ -29,7 +34,7 @@
 
   function traced(event) {
     var el = event.target;
-    return el && el.closest ? el.closest("svg [data-span], .formula [data-offset]") : null;
+    return el && el.closest ? el.closest(PARTS + ", " + CHARS) : null;
   }
 
   function enter(event) {
@@ -51,7 +56,7 @@
       return null;
     }
     var range = current.getRangeAt(0);
-    var picked = chars.filter(function (c) {
+    var picked = all(CHARS).filter(function (c) {
       return range.intersectsNode(c);
     });
     if (picked.length === 0) {
@@ -60,12 +65,20 @@
     return [spanOf(picked[0])[0], spanOf(picked[picked.length - 1])[1]];
   }
 
-  chars.concat(parts).forEach(function (el) {
-    el.setAttribute("tabindex", "0");
-  });
-  document.querySelectorAll("svg.moiety-structure").forEach(function (svg) {
-    svg.setAttribute("role", "group");
-  });
+  function prepare() {
+    all(CHARS + ", " + PARTS).forEach(function (el) {
+      el.setAttribute("tabindex", "0");
+    });
+    all("svg.moiety-structure").forEach(function (svg) {
+      svg.setAttribute("role", "group");
+    });
+  }
+
+  prepare();
+  new MutationObserver(function () {
+    selected = null;
+    prepare();
+  }).observe(document.body, { childList: true, subtree: true });
   document.addEventListener("mouseover", enter);
   document.addEventListener("mouseout", leave);
   document.addEventListener("focusin", enter);

@@ -217,6 +217,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "moiety-wasm"
+version = "0.2.0"
+dependencies = [
+ "moiety",
+ "moiety-draw",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"

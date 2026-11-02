@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>moiety playground</title>
+<meta name="description" content="Type a condensed organic formula and see every structure it can be read as, traced back to its characters.">
+<link rel="stylesheet" href="viewer.css">
+<link rel="stylesheet" href="playground.css">
+<script src="playground.js" defer></script>
+</head>
+<body>
+<main>
+<header class="bar">
+<span class="brand">moiety</span>
+<span class="badge">playground</span>
+<a href="https://github.com/fuyu-myk/moiety">Source on GitHub</a>
+</header>
+<p class="intro">Type a condensed formula. moiety draws every possible structure and ranks them best first. Unreadable formulas are flagged.</p>
+<label class="prompt" for="formula">Formula</label>
+<input id="formula" type="text" value="COCl2" maxlength="200" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">
+<p class="examples">
+<span>Try</span>
+<button type="button">CH3CH2OH</button>
+<button type="button">(CH3)2CHCOOH</button>
+<button type="button">EtO2CCH2CO2Et</button>
+<button type="button">COCl2</button>
+<button type="button">CH3CO-</button>
+<button type="button">CuSO4·5H2O</button>
+<button type="button">C6H6</button>
+<button type="button">CH3CH3OH</button>
+</p>
+<div id="output" class="output"><p class="summary">Loading moiety.</p></div>
+</main>
+<script src="viewer.js"></script>
+</body>
+</html>

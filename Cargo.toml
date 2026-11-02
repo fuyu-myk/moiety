@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/moiety-core", "crates/moiety", "crates/moiety-draw", "crates/moiety-cli"]
+members = ["crates/moiety-core", "crates/moiety", "crates/moiety-draw", "crates/moiety-cli", "crates/moiety-wasm"]
 
 [workspace.package]
 version = "0.2.0"
@@ -24,3 +24,9 @@ proptest = "=1.12.0"
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
+
+[profile.wasm]
+inherits = "release"
+lto = true
+codegen-units = 1
+strip = true

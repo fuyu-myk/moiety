@@ -32,6 +32,7 @@ The language is specified in [docs/grammar.md](docs/grammar.md): normalization, 
 | `moiety` | The bundled abbreviation dictionary and its TOML loader, the inverse writer, and the conformance runner. |
 | `moiety-draw` | Template layout for the v1 input language, SVG rendering, and an HTML page with bidirectional provenance highlighting. |
 | `moiety-cli` | The `moiety` command. |
+| `moiety-wasm` | The WebAssembly module behind the browser playground. Not published. |
 
 Canonical SMILES lives in `moiety-core` rather than `moiety`, because deduplicating readings depends on it.
 
@@ -87,6 +88,18 @@ moiety html 'CH3SOCH3' -o dmso.html
 
 The HTML page puts the formula above a card for every reading, with its rank, score, direction and the choice it made at each ambiguity. Pointing at, focusing or selecting characters of the formula highlights the atoms and bonds they produced in every reading, and pointing at an atom or bond highlights its characters.
 
+## Playground
+
+The playground runs moiety in the browser: every reading is drawn as you type, with the same two-way highlighting as the HTML page. Underdetermined and invalid formulas say why they cannot be read, with the characters at fault underlined.
+
+It is a static site in [playground](playground). `moiety-wasm` compiles the parser and the renderer to a WebAssembly module that exports three functions and needs no generated bindings, and a Web Worker runs it, so a slow formula never blocks typing. To build and serve it locally:
+
+```text
+rustup target add wasm32-unknown-unknown
+playground/build.sh target/playground
+python3 -m http.server --directory target/playground
+```
+
 ## Conformance
 
 The suite is data, not Rust tests, so any implementation can run it: [conformance/cases.toml](conformance/cases.toml) lists each input with its expected result kind, readings in rank order, ambiguity classes, and for invalid input the diagnostic code and primary span. [conformance/roundtrip.smi](conformance/roundtrip.smi) is a corpus of well-known molecules that the inverse writer turns into condensed formulas and the parser reads back.
@@ -115,7 +128,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo run --release -p moiety-cli -- conformance
 ```
 
-CI runs the same commands, including the conformance gate, from [.github/workflows/ci.yml](.github/workflows/ci.yml).
+CI runs the same commands, including the conformance gate and a playground build, from [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 ## Status
 

@@ -7,6 +7,7 @@
   --line: #d1d9e0;
   --accent: #b35900;
   --accent-soft: rgba(219, 109, 0, 0.18);
+  --error: #cf222e;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -18,6 +19,7 @@
     --line: #3d444d;
     --accent: #ffa657;
     --accent-soft: rgba(255, 166, 87, 0.22);
+    --error: #ff7b72;
   }
 }
 
@@ -43,6 +45,12 @@ main {
 
 .formula span {
   border-radius: 4px;
+}
+
+.formula span.flag {
+  text-decoration: underline wavy var(--error);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 0.25em;
 }
 
 .formula span.hl {
@@ -130,4 +138,49 @@ svg [data-span]:focus-visible .hit {
 
 .ambiguities {
   padding-left: 1.1rem;
+}
+
+.problems {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.problems > li {
+  padding: 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--error);
+  border-radius: 8px;
+}
+
+.problems p {
+  margin: 0;
+}
+
+.labels {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+}
+
+.labels [data-span] {
+  border-radius: 4px;
+}
+
+.labels [data-span]:focus {
+  outline: none;
+}
+
+.labels [data-span].hl,
+.labels [data-span]:focus-visible {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.problems .note {
+  margin-top: 0.5rem;
+  color: var(--muted);
 }

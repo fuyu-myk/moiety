@@ -1,0 +1,22 @@
+[package]
+name = "moiety-wasm"
+description = "WebAssembly module behind the moiety playground"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+moiety.workspace = true
+moiety-draw.workspace = true
+
+# The workspace forbids unsafe code; exporting functions by name needs `unsafe(no_mangle)`.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
