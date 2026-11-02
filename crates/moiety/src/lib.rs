@@ -30,3 +30,9 @@ pub use moiety_core::*;
 pub fn interpret(input: &str) -> Interpretation {
     moiety_core::interpret(input, default_dictionary(), &Options::default())
 }
+
+/// Reads a formula with a chosen dictionary and options.
+#[must_use]
+pub fn interpret_with(input: &str, dictionary: &Dictionary, options: &Options) -> Interpretation {
+    moiety_core::interpret(input, dictionary, options)
+}
