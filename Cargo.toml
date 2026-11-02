@@ -6,7 +6,10 @@ members = ["crates/moiety-core", "crates/moiety", "crates/moiety-draw", "crates/
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-authors = ["myk"]
+license = "MIT"
+repository = "https://github.com/fuyu-myk/moiety"
+homepage = "https://github.com/fuyu-myk/moiety"
+keywords = ["chemistry", "cheminformatics", "smiles", "parser", "condensed-formula"]
 
 [workspace.dependencies]
 moiety-core = { path = "crates/moiety-core", version = "0.1.0" }

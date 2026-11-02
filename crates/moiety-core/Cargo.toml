@@ -4,7 +4,13 @@ description = "Condensed-formula grammar, valence resolution and interpretation,
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/moiety-core"
+readme = "../../README.md"
+keywords.workspace = true
+categories = ["science", "parser-implementations"]
 
 [dependencies]
 
