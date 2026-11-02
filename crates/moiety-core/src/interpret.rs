@@ -55,7 +55,8 @@ pub struct Options {
     pub max_readings: usize,
     /// Whether invalid input triggers a search for a nearby formula that reads.
     pub suggestions: bool,
-    /// Most search states spent on one component before giving up with CF0003.
+    /// Most search steps spent on one component before giving up with CF0003. A
+    /// step is a search state or an atom copied by a group count.
     pub search_limit: usize,
 }
 

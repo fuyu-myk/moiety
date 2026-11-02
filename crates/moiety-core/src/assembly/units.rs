@@ -318,6 +318,12 @@ fn repeat_group(
     };
     let tail = group.host().unwrap_or(head);
     let n = unit.count();
+    // Nested counts multiply, so every copied atom is charged.
+    let copied = usize::try_from(n).map_or(usize::MAX, |n| n.saturating_mul(group.atoms.len()));
+    if !ctx.spend(copied) {
+        ctx.exhausted = true;
+        return Vec::new();
+    }
     let mut out = Vec::new();
     if n == 1 || free == 1 || free >= 3 {
         let mut s = state.clone();

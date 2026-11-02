@@ -108,7 +108,7 @@ Syntax errors:
 | --- | --- |
 | CF0001 | Empty formula or empty component |
 | CF0002 | Formula longer than 256 bytes |
-| CF0003 | Formula needs more search than the limit allows (200,000 states per component by default) |
+| CF0003 | Formula needs more search than the limit allows (200,000 steps per component by default, where a step is a search state or an atom copied by a group count) |
 | CF0102 | A group is opened and never closed |
 | CF0103 | A close bracket has no matching open |
 | CF0104 | Warning: a group opened with one bracket kind is closed with the other |

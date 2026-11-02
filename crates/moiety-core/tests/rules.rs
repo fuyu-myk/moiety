@@ -212,6 +212,13 @@ fn caret_charges_do_not_take_a_count() {
 }
 
 #[test]
+fn repeated_groups_spend_the_search_budget() {
+    let nested = format!("{}CH2{}", "(".repeat(18), ")2".repeat(18));
+    assert_eq!(error_code(&nested), Code::TooComplex);
+    reads_as("CH3(CH2)100CH3", &format!("C{}C", "C".repeat(100)));
+}
+
+#[test]
 fn pathological_inputs_stop_at_the_search_limit() {
     let quick = Options {
         suggestions: false,
