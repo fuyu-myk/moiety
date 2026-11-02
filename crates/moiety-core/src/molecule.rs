@@ -118,7 +118,7 @@ impl Bond {
 }
 
 /// A molecular graph with implicit hydrogens.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Molecule {
     atoms: Vec<Atom>,
     bonds: Vec<Bond>,

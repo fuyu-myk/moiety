@@ -1,7 +1,7 @@
-use std::cell::Cell;
-use std::collections::BTreeMap;
+use std::cell::{Cell, RefCell};
+use std::collections::{BTreeMap, HashMap};
 
-use crate::assembly::{Derivation, Failure, assemble, assemble_salt};
+use crate::assembly::{Budget, Derivation, Failure, assemble, assemble_salt};
 use crate::classify::{Choices, classify};
 use crate::diagnostic::{Code, Diagnostic, Label};
 use crate::dictionary::Dictionary;
@@ -13,6 +13,7 @@ use crate::parser::{SyntaxError, Tail, Tree, parse};
 use crate::reading::{
     Ambiguity, AmbiguityClass, Direction, Interpretation, Provenance, Reading, Underdetermination,
 };
+use crate::smiles::write_within;
 use crate::span::Span;
 use crate::suggest::suggest;
 
@@ -22,8 +23,14 @@ pub const GRAMMAR_VERSION: u32 = 1;
 pub const RANKING_POLICY_VERSION: u32 = 2;
 /// Longest formula, in bytes, that [`interpret`] accepts.
 pub const MAX_INPUT_LEN: usize = 256;
+/// Most atoms a reading may have, counting every copy that a count makes and
+/// every component. Hydrogens held by other atoms do not count.
+pub const MAX_ATOMS: usize = 1_000;
 
 const PATH_LIMIT: usize = 128;
+/// Atom visits allowed for writing the canonical SMILES of a formula's readings,
+/// per search step of [`Options::search_limit`].
+const RANKING_VISITS_PER_STEP: usize = 25;
 
 /// How hypervalent nitrogen is represented. See the grammar, section 6.10.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -56,7 +63,9 @@ pub struct Options {
     /// Whether invalid input triggers a search for a nearby formula that reads.
     pub suggestions: bool,
     /// Most search steps spent on one component before giving up with CF0003. A
-    /// step is a search state or an atom copied by a group count.
+    /// step is a search state or an atom copied by a group count. States that
+    /// cannot complete are counted apart, up to ten for each step, and writing
+    /// canonical SMILES for the readings may visit 25 atoms for each step.
     pub search_limit: usize,
 }
 
@@ -74,24 +83,76 @@ impl Default for Options {
 /// Reads a condensed formula and returns every reading that survives valence resolution.
 #[must_use]
 pub fn interpret(input: &str, dictionary: &Dictionary, options: &Options) -> Interpretation {
-    interpret_within(input, dictionary, options, None)
+    let (normalized, components) = match split(input) {
+        Ok(split) => split,
+        Err(diagnostic) => return invalid(*diagnostic),
+    };
+    let ranking = Ranking {
+        visits: Cell::new(options.search_limit.saturating_mul(RANKING_VISITS_PER_STEP)),
+        written: RefCell::new(HashMap::new()),
+    };
+    let mut outcomes = Vec::new();
+    for span in components {
+        let goal = Goal::Rank(&ranking);
+        match component(input, &normalized, span, dictionary, options, None, goal) {
+            Outcome::Readings(readings) => outcomes.push(readings),
+            Outcome::Underdetermined(span, reason) => {
+                return Interpretation::Underdetermined { span, reason };
+            }
+            Outcome::Invalid(diagnostic) => return invalid(*diagnostic),
+        }
+    }
+    let largest: usize = outcomes
+        .iter()
+        .map(|readings| {
+            readings
+                .iter()
+                .map(|p| p.molecule.atoms().len())
+                .max()
+                .unwrap_or(0)
+        })
+        .sum();
+    if largest > MAX_ATOMS {
+        return invalid(too_large(Span::new(0, input.len())));
+    }
+    combine(outcomes, &normalized, options)
 }
 
-/// [`interpret`], drawing search states from `shared` instead of a fresh budget per component.
-pub(crate) fn interpret_within(
+/// Whether every component of `input` has a reading, drawing search steps from
+/// `budget` and leaving the readings unranked.
+pub(crate) fn readable(
     input: &str,
     dictionary: &Dictionary,
     options: &Options,
-    shared: Option<&Cell<usize>>,
-) -> Interpretation {
+    budget: &Budget,
+) -> bool {
+    split(input).is_ok_and(|(normalized, components)| {
+        components.into_iter().all(|span| {
+            let goal = Goal::Check;
+            let outcome = component(
+                input,
+                &normalized,
+                span,
+                dictionary,
+                options,
+                Some(budget),
+                goal,
+            );
+            matches!(outcome, Outcome::Readings(_))
+        })
+    })
+}
+
+/// Normalizes `input` and splits it into components, or says why it cannot be read.
+fn split(input: &str) -> Result<(Normalized, Vec<Span>), Box<Diagnostic>> {
     let normalized = normalize(input);
     let whole = Span::new(0, input.len());
     if input.len() > MAX_INPUT_LEN {
-        return invalid(Diagnostic::new(
+        return Err(Box::new(Diagnostic::new(
             Code::TooLong,
             format!("formula is longer than {MAX_INPUT_LEN} bytes"),
             Label::new(whole, "too long to read"),
-        ));
+        )));
     }
     let text = normalized.text();
     let mut components = Vec::new();
@@ -108,7 +169,7 @@ pub(crate) fn interpret_within(
             empty.start.saturating_sub(1),
             (empty.end + 1).min(text.len()),
         );
-        return invalid(Diagnostic::new(
+        return Err(Box::new(Diagnostic::new(
             Code::Empty,
             "empty component",
             Label::new(
@@ -119,25 +180,32 @@ pub(crate) fn interpret_within(
                 },
                 "nothing to read here",
             ),
-        ));
+        )));
     }
-    let mut outcomes = Vec::new();
-    for span in components {
-        match component(input, &normalized, span, dictionary, options, shared) {
-            Outcome::Readings(readings) => outcomes.push(readings),
-            Outcome::Underdetermined(span, reason) => {
-                return Interpretation::Underdetermined { span, reason };
-            }
-            Outcome::Invalid(diagnostic) => return invalid(*diagnostic),
-        }
-    }
-    combine(outcomes, &normalized, options)
+    Ok((normalized, components))
 }
 
 fn invalid(diagnostic: Diagnostic) -> Interpretation {
     Interpretation::Invalid {
         diagnostics: vec![diagnostic],
     }
+}
+
+/// What ranking may spend on the readings of one formula.
+struct Ranking {
+    /// Atom visits left for writing canonical SMILES.
+    visits: Cell<usize>,
+    /// Canonical SMILES already written, by molecule.
+    written: RefCell<HashMap<Molecule, String>>,
+}
+
+/// What a component is read for.
+#[derive(Clone, Copy)]
+enum Goal<'a> {
+    /// Rank the readings.
+    Rank(&'a Ranking),
+    /// Only find out whether there is a reading.
+    Check,
 }
 
 enum Outcome {
@@ -174,7 +242,8 @@ fn component(
     span: Span,
     dictionary: &Dictionary,
     options: &Options,
-    shared: Option<&Cell<usize>>,
+    shared: Option<&Budget>,
+    goal: Goal<'_>,
 ) -> Outcome {
     let original = |s: Span| normalized.to_original(s);
     let lattice = match lex(normalized.text(), span, dictionary) {
@@ -239,7 +308,8 @@ fn component(
     let mut underdetermined = None;
     let mut truncated = paths_truncated;
     let mut exhausted = false;
-    let local = Cell::new(options.search_limit);
+    let mut oversized = None;
+    let local = Budget::new(options.search_limit);
     let budget = shared.unwrap_or(&local);
     for salt in [false, true] {
         for (tree, &score) in trees.iter().zip(&lexical) {
@@ -261,7 +331,15 @@ fn component(
             if underdetermined.is_none() {
                 underdetermined = assembly.underdetermined;
             }
+            if let Some(at) = assembly.oversized {
+                oversized.get_or_insert(at);
+            }
             for derivation in assembly.derivations {
+                let copies = usize::try_from(tree.multiplier).unwrap_or(usize::MAX);
+                if derivation.molecule.atoms().len().saturating_mul(copies) > MAX_ATOMS {
+                    oversized.get_or_insert(tree.span);
+                    continue;
+                }
                 candidates.push(candidate(tree, derivation, score, options));
             }
         }
@@ -269,13 +347,12 @@ fn component(
             break;
         }
     }
+    if let Some(at) = oversized {
+        return Outcome::Invalid(Box::new(too_large(original(at))));
+    }
     if candidates.is_empty() {
         if exhausted {
-            return Outcome::Invalid(Box::new(Diagnostic::new(
-                Code::TooComplex,
-                "formula needs more search than the limit allows",
-                Label::new(original(span), "too many alternative readings to explore"),
-            )));
+            return too_complex(original(span));
         }
         if trees.iter().any(Tree::is_formula_shaped) {
             return Outcome::Underdetermined(original(span), Underdetermination::MolecularFormula);
@@ -302,7 +379,43 @@ fn component(
             options,
         )));
     }
-    Outcome::Readings(rank(candidates, &lattice, normalized, truncated, options))
+    match goal {
+        Goal::Check => Outcome::Readings(Vec::new()),
+        Goal::Rank(ranking) => {
+            match rank(
+                candidates, &lattice, normalized, truncated, options, ranking,
+            ) {
+                Some(readings) => Outcome::Readings(readings),
+                None => Outcome::Invalid(Box::new(Diagnostic::new(
+                    Code::TooComplex,
+                    "readings need more work to compare than the limit allows",
+                    Label::new(
+                        Span::new(0, input.len()),
+                        "these readings are too large or too symmetric to tell apart",
+                    ),
+                ))),
+            }
+        }
+    }
+}
+
+fn too_large(span: Span) -> Diagnostic {
+    Diagnostic::new(
+        Code::TooLarge,
+        "reading has more atoms than the limit allows",
+        Label::new(
+            span,
+            format!("a reading of this would pass {MAX_ATOMS} atoms"),
+        ),
+    )
+}
+
+fn too_complex(span: Span) -> Outcome {
+    Outcome::Invalid(Box::new(Diagnostic::new(
+        Code::TooComplex,
+        "formula needs more search than the limit allows",
+        Label::new(span, "too many alternative readings to explore"),
+    )))
 }
 
 fn candidate<'a>(
@@ -333,13 +446,20 @@ fn rank(
     normalized: &Normalized,
     truncated: bool,
     options: &Options,
-) -> Vec<Partial> {
+    ranking: &Ranking,
+) -> Option<Vec<Partial>> {
     let mut groups: BTreeMap<String, Vec<Candidate<'_>>> = BTreeMap::new();
+    let mut written = ranking.written.borrow_mut();
     for candidate in candidates {
-        groups
-            .entry(candidate.molecule.to_smiles())
-            .or_default()
-            .push(candidate);
+        let smiles = match written.get(&candidate.molecule) {
+            Some(smiles) => smiles.clone(),
+            None => {
+                let smiles = write_within(&candidate.molecule, &ranking.visits)?;
+                written.insert(candidate.molecule.clone(), smiles.clone());
+                smiles
+            }
+        };
+        groups.entry(smiles).or_default().push(candidate);
     }
     let mut groups: Vec<(String, Vec<Candidate<'_>>)> = groups.into_iter().collect();
     for (_, members) in &mut groups {
@@ -391,7 +511,7 @@ fn rank(
             }
         }
     }
-    groups
+    let partials = groups
         .into_iter()
         .zip(ambiguities)
         .zip(classes)
@@ -438,7 +558,8 @@ fn rank(
                 warnings,
             }
         })
-        .collect()
+        .collect();
+    Some(partials)
 }
 
 fn push_class(list: &mut Vec<AmbiguityClass>, class: AmbiguityClass) {
@@ -508,7 +629,7 @@ fn combine(
                     Direction::Mixed
                 };
                 next.push(Partial {
-                    smiles: String::new(),
+                    smiles: join_smiles(&base.smiles, &reading.smiles),
                     atom_spans: [base.atom_spans.clone(), reading.atom_spans.clone()].concat(),
                     bond_spans: [base.bond_spans.clone(), reading.bond_spans.clone()].concat(),
                     molecule,
@@ -526,9 +647,6 @@ fn combine(
             next.truncate(reading_limit(options));
         }
         combined = next;
-    }
-    for partial in &mut combined {
-        partial.smiles = partial.molecule.to_smiles();
     }
     combined.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.smiles.cmp(&b.smiles)));
     let combined = merge_duplicates(combined);
@@ -567,6 +685,17 @@ fn combine(
     } else {
         Interpretation::Ambiguous { readings, classes }
     }
+}
+
+/// The canonical SMILES of two molecules side by side, which sorts their components.
+fn join_smiles(a: &str, b: &str) -> String {
+    let mut parts: Vec<&str> = a
+        .split('.')
+        .chain(b.split('.'))
+        .filter(|p| !p.is_empty())
+        .collect();
+    parts.sort_unstable();
+    parts.join(".")
 }
 
 /// Most readings returned: the option, but never fewer than two, so an ambiguous

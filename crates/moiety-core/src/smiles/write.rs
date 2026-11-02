@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{aromatic_symbol, default_valence};
@@ -8,21 +9,42 @@ const TIE_BREAK_LIMIT: usize = 128;
 
 /// Writes canonical SMILES.
 ///
-/// Each component is canonicalized on its own. Atoms are ranked by iterative
-/// refinement of their local invariants. Where refinement leaves a tie, every
-/// member of the lowest tied class is tried in turn and the smallest resulting
-/// string is kept, so the output does not depend on atom order. Each string is
-/// written by a depth-first walk that visits neighbours in rank order.
-/// Components are sorted and joined with `.`.
+/// Each component is canonicalized on its own, and identical components only
+/// once. Atoms are ranked by iterative refinement of their local invariants.
+/// Where refinement leaves a tie, every member of the lowest tied class is
+/// tried in turn and the smallest resulting string is kept, so the output does
+/// not depend on atom order. Each string is written by a depth-first walk that
+/// visits neighbours in rank order. Components are sorted and joined with `.`.
 #[must_use]
 pub fn write(molecule: &Molecule) -> String {
-    let mut parts: Vec<String> = molecule
-        .components()
-        .iter()
-        .map(|component| canonical_component(&submolecule(molecule, component)))
-        .collect();
+    write_within(molecule, &Cell::new(usize::MAX)).expect("unlimited work never runs out")
+}
+
+/// [`write`], spending one unit of `work` for every atom that refinement or
+/// writing visits. `None` once `work` runs out.
+pub(crate) fn write_within(molecule: &Molecule, work: &Cell<usize>) -> Option<String> {
+    let mut written: Vec<(Molecule, String)> = Vec::new();
+    let mut parts: Vec<String> = Vec::new();
+    for component in molecule.components() {
+        let part = submolecule(molecule, &component);
+        let text = match written.iter().find(|(seen, _)| *seen == part) {
+            Some((_, text)) => text.clone(),
+            None => {
+                let text = canonical_component(&part, work)?;
+                written.push((part, text.clone()));
+                text
+            }
+        };
+        parts.push(text);
+    }
     parts.sort();
-    parts.join(".")
+    Some(parts.join("."))
+}
+
+fn spend(work: &Cell<usize>, n: usize) -> bool {
+    let left = work.get().checked_sub(n);
+    work.set(left.unwrap_or(0));
+    left.is_some()
 }
 
 fn submolecule(molecule: &Molecule, atoms: &[usize]) -> Molecule {
@@ -39,7 +61,7 @@ fn submolecule(molecule: &Molecule, atoms: &[usize]) -> Molecule {
     part
 }
 
-fn canonical_component(molecule: &Molecule) -> String {
+fn canonical_component(molecule: &Molecule, work: &Cell<usize>) -> Option<String> {
     let adjacency = molecule.adjacency();
     let atoms = molecule.atoms();
     let invariants: Vec<(u8, bool, usize, u8, i8)> = atoms
@@ -60,11 +82,11 @@ fn canonical_component(molecule: &Molecule) -> String {
         })
         .collect();
     let mut ranks = dense_rank(&invariants);
-    refine(molecule, &adjacency, &mut ranks);
+    refine(molecule, &adjacency, &mut ranks, work)?;
     let mut best = None;
     let mut leaves = 0;
-    search(molecule, &adjacency, ranks, &mut best, &mut leaves);
-    best.expect("the search reaches at least one leaf")
+    search(molecule, &adjacency, ranks, &mut best, &mut leaves, work)?;
+    best
 }
 
 /// Breaks the lowest remaining tie every possible way and keeps the smallest string.
@@ -74,9 +96,13 @@ fn search(
     ranks: Vec<usize>,
     best: &mut Option<String>,
     leaves: &mut usize,
-) {
+    work: &Cell<usize>,
+) -> Option<()> {
     let Some(tied) = lowest_tie(&ranks) else {
         *leaves += 1;
+        if !spend(work, ranks.len()) {
+            return None;
+        }
         let start = (0..ranks.len())
             .min_by_key(|&atom| (adjacency[atom].len(), ranks[atom]))
             .expect("components are non-empty");
@@ -84,38 +110,88 @@ fn search(
         if best.as_ref().is_none_or(|current| written < *current) {
             *best = Some(written);
         }
-        return;
+        return Some(());
     };
-    for member in tied {
+    for member in representatives(tied, molecule, adjacency) {
         if *leaves >= TIE_BREAK_LIMIT && best.is_some() {
-            return;
+            return Some(());
         }
         let mut split: Vec<usize> = ranks.iter().map(|&rank| rank * 2 + 1).collect();
         split[member] -= 1;
         let mut split = dense_rank(&split);
-        refine(molecule, adjacency, &mut split);
-        search(molecule, adjacency, split, best, leaves);
+        refine(molecule, adjacency, &mut split, work)?;
+        search(molecule, adjacency, split, best, leaves, work)?;
     }
+    Some(())
 }
 
-fn refine(molecule: &Molecule, adjacency: &[Vec<(usize, usize)>], ranks: &mut Vec<usize>) {
-    let mut classes = distinct(ranks);
+/// The members of a tied class worth trying. Swapping two terminal atoms on the
+/// same neighbour by the same bond is a symmetry of the molecule, so the first
+/// of them stands for the rest.
+fn representatives(
+    tied: Vec<usize>,
+    molecule: &Molecule,
+    adjacency: &[Vec<(usize, usize)>],
+) -> Vec<usize> {
+    let mut seen: Vec<(usize, BondOrder)> = Vec::new();
+    tied.into_iter()
+        .filter(|&atom| match adjacency[atom].as_slice() {
+            [(neighbour, bond)] => {
+                let key = (*neighbour, molecule.bonds()[*bond].order);
+                let first = !seen.contains(&key);
+                seen.push(key);
+                first
+            }
+            _ => true,
+        })
+        .collect()
+}
+
+fn refine(
+    molecule: &Molecule,
+    adjacency: &[Vec<(usize, usize)>],
+    ranks: &mut Vec<usize>,
+    work: &Cell<usize>,
+) -> Option<()> {
+    let n = ranks.len();
+    let mut classes = ranks.iter().max().map_or(0, |&rank| rank + 1);
+    let mut neighbours: Vec<(usize, BondOrder)> = Vec::new();
+    let mut starts: Vec<usize> = Vec::with_capacity(n + 1);
+    let mut order: Vec<usize> = (0..n).collect();
     loop {
-        let keys: Vec<(usize, Vec<(usize, BondOrder)>)> = (0..ranks.len())
-            .map(|i| {
-                let mut neighbours: Vec<(usize, BondOrder)> = adjacency[i]
+        if !spend(work, n) {
+            return None;
+        }
+        neighbours.clear();
+        starts.clear();
+        for links in adjacency {
+            let from = neighbours.len();
+            starts.push(from);
+            neighbours.extend(
+                links
                     .iter()
-                    .map(|&(other, bond)| (ranks[other], molecule.bonds()[bond].order))
-                    .collect();
-                neighbours.sort_unstable();
-                (ranks[i], neighbours)
-            })
-            .collect();
-        let next = dense_rank(&keys);
-        let next_classes = distinct(&next);
+                    .map(|&(other, bond)| (ranks[other], molecule.bonds()[bond].order)),
+            );
+            neighbours[from..].sort_unstable();
+        }
+        starts.push(neighbours.len());
+        let next = {
+            let key = |i: usize| (ranks[i], &neighbours[starts[i]..starts[i + 1]]);
+            order.sort_unstable_by(|&a, &b| key(a).cmp(&key(b)));
+            let mut next = vec![0; n];
+            let mut rank = 0;
+            for pair in order.windows(2) {
+                if key(pair[0]) != key(pair[1]) {
+                    rank += 1;
+                }
+                next[pair[1]] = rank;
+            }
+            next
+        };
+        let next_classes = next.iter().max().map_or(0, |&rank| rank + 1);
         *ranks = next;
         if next_classes == classes {
-            return;
+            return Some(());
         }
         classes = next_classes;
     }
@@ -133,10 +209,6 @@ fn lowest_tie(ranks: &[usize]) -> Option<Vec<usize>> {
             .filter(|&atom| ranks[atom] == tied_rank)
             .collect(),
     )
-}
-
-fn distinct(ranks: &[usize]) -> usize {
-    ranks.iter().collect::<BTreeSet<_>>().len()
 }
 
 fn dense_rank<T: Ord>(keys: &[T]) -> Vec<usize> {

@@ -1,7 +1,8 @@
 //! Clash removal: acyclic branches are flipped or turned about single bonds
-//! until no two unbonded atoms sit closer than [`CLASH`] bond lengths, or no
-//! move helps.
+//! until no two unbonded atoms sit closer than [`CLASH`] bond lengths, no move
+//! helps, or the work allowed for the component runs out.
 
+use std::cell::Cell;
 use std::f64::consts::{FRAC_PI_3, FRAC_PI_6};
 
 use moiety_core::{BondOrder, Molecule};
@@ -15,6 +16,9 @@ const CLASH: f64 = 0.6;
 
 /// Upper bound on the moves made for one component.
 const MAX_MOVES: usize = 64;
+
+/// Upper bound on the atom pairs compared while weighing moves in one component.
+const MAX_WORK: usize = 4_000_000;
 
 /// Turns tried about a branch point, after the flip.
 const TURNS: [f64; 4] = [FRAC_PI_6, -FRAC_PI_6, FRAC_PI_3, -FRAC_PI_3];
@@ -45,6 +49,7 @@ struct Scene<'a> {
     adjacency: &'a Adjacency,
     rings: &'a RingInfo,
     component: &'a [usize],
+    work: Cell<usize>,
 }
 
 /// Moves branches of `component` until none of its atoms clash or no move reduces the clashes.
@@ -60,6 +65,7 @@ pub(super) fn resolve(
         adjacency,
         rings,
         component,
+        work: Cell::new(MAX_WORK),
     };
     for _ in 0..MAX_MOVES {
         let clashes = scene.clashes(positions);
@@ -115,7 +121,7 @@ impl Scene<'_> {
         let mut best: Option<(f64, Move)> = None;
         for pair in path.windows(2) {
             for candidate in self.moves_about(pair[0], pair[1]) {
-                let change = self.penalty_change(positions, &candidate);
+                let change = self.penalty_change(positions, &candidate)?;
                 let cost = match candidate.motion {
                     Motion::Flip => change,
                     Motion::Turn(_) => change + TURN_COST,
@@ -159,8 +165,11 @@ impl Scene<'_> {
             .collect()
     }
 
-    /// Change in the total clash penalty if `candidate` were applied.
-    fn penalty_change(&self, positions: &[Point], candidate: &Move) -> f64 {
+    /// Change in the total clash penalty if `candidate` were applied, or `None`
+    /// once the work allowed for the component runs out.
+    fn penalty_change(&self, positions: &[Point], candidate: &Move) -> Option<f64> {
+        let pairs = candidate.branch.len() * self.component.len();
+        self.work.set(self.work.get().checked_sub(pairs)?);
         let mut moving = vec![false; positions.len()];
         for &atom in &candidate.branch {
             moving[atom] = true;
@@ -175,7 +184,7 @@ impl Scene<'_> {
                 }
             }
         }
-        change
+        Some(change)
     }
 }
 

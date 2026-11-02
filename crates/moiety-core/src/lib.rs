@@ -33,7 +33,8 @@ pub use diagnostic::{Code, Diagnostic, Label, Severity};
 pub use dictionary::{Dictionary, DictionaryError, Entry};
 pub use element::{Category, Element};
 pub use interpret::{
-    ChargeConvention, GRAMMAR_VERSION, MAX_INPUT_LEN, Options, RANKING_POLICY_VERSION, interpret,
+    ChargeConvention, GRAMMAR_VERSION, MAX_ATOMS, MAX_INPUT_LEN, Options, RANKING_POLICY_VERSION,
+    interpret,
 };
 pub use molecule::{Atom, AtomKind, Bond, BondOrder, Molecule};
 pub use reading::{

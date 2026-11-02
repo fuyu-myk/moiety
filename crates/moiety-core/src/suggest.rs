@@ -1,7 +1,8 @@
+use crate::assembly::Budget;
 use crate::dictionary::Dictionary;
 use std::cell::Cell;
 
-use crate::interpret::{Options, interpret_within};
+use crate::interpret::{Options, interpret, readable};
 use crate::reading::Interpretation;
 use crate::span::Span;
 
@@ -26,7 +27,7 @@ pub(crate) fn suggest(
         suggestions: false,
         ..options.clone()
     };
-    let budget = Cell::new(SUGGESTION_SEARCH_LIMIT);
+    let budget = Budget::new(SUGGESTION_SEARCH_LIMIT);
     let distance = |offset: usize| {
         if near.start <= offset && offset < near.end.max(near.start + 1) {
             0
@@ -40,11 +41,16 @@ pub(crate) fn suggest(
     let reads = |candidate: &str| {
         tried.set(tried.get() + 1);
         tried.get() <= MAX_CANDIDATES
-            && budget.get() > 0
-            && matches!(
-                interpret_within(candidate, dictionary, &quiet, Some(&budget)),
-                Interpretation::Unique(_) | Interpretation::Ambiguous { .. }
-            )
+            && !budget.is_spent()
+            && readable(candidate, dictionary, &quiet, &budget)
+    };
+    // The first edit that reads ends the search, and is offered only if a full read agrees.
+    let confirmed = |candidate: String| {
+        matches!(
+            interpret(&candidate, dictionary, &quiet),
+            Interpretation::Unique(_) | Interpretation::Ambiguous { .. }
+        )
+        .then_some(candidate)
     };
     let edit = |i: usize, replacement: Option<char>, insert: bool| {
         let mut out: String = chars[..i].iter().map(|&(_, c)| c).collect();
@@ -76,19 +82,19 @@ pub(crate) fn suggest(
         for c in replacements {
             let candidate = edit(i, Some(c), false);
             if reads(&candidate) {
-                return Some(candidate);
+                return confirmed(candidate);
             }
         }
         let deleted = edit(i, None, false);
         if !deleted.is_empty() && reads(&deleted) {
-            return Some(deleted);
+            return confirmed(deleted);
         }
     }
     for &i in &positions {
         for c in DIGITS.into_iter().chain(LETTERS) {
             let candidate = edit(i, Some(c), true);
             if reads(&candidate) {
-                return Some(candidate);
+                return confirmed(candidate);
             }
         }
     }

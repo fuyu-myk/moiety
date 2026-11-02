@@ -276,3 +276,15 @@ fn layout_is_deterministic_and_handles_empty_molecules() {
     let methane = layout(&read("CH4"));
     assert_eq!(methane.positions(), [Point::new(0.0, 0.0)]);
 }
+
+#[test]
+fn lays_out_large_readings_with_unit_bonds() {
+    let molecule = read("-(BNO-O2NCHBNCH2)66H");
+    let layout = layout(&molecule);
+    let points = layout.positions();
+    assert_eq!(points.len(), 661);
+    assert!(points.iter().all(|p| p.x.is_finite() && p.y.is_finite()));
+    for bond in molecule.bonds() {
+        assert!((points[bond.a].distance(points[bond.b]) - 1.0).abs() < TOLERANCE);
+    }
+}

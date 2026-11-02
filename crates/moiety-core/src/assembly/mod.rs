@@ -22,7 +22,34 @@ use crate::reading::Underdetermination;
 use crate::span::Span;
 
 const STATE_LIMIT: usize = 20_000;
+/// Most atoms, summed over its states, that a frontier keeps. Every state copies
+/// its molecule, so this bounds memory where the state count alone does not.
+const STATE_ATOMS: usize = 400_000;
 const BOND_COMBINATION_LIMIT: usize = 256;
+
+/// States that cannot complete, discarded as soon as they are made, allowed per search step.
+const DISCARDS_PER_STEP: usize = 10;
+
+/// What one component may spend on its search, or a suggestion search on all of its edits.
+pub(crate) struct Budget {
+    steps: Cell<usize>,
+    discards: Cell<usize>,
+}
+
+impl Budget {
+    /// `steps` search steps, and [`DISCARDS_PER_STEP`] discarded states for each.
+    pub fn new(steps: usize) -> Self {
+        Self {
+            steps: Cell::new(steps),
+            discards: Cell::new(steps.saturating_mul(DISCARDS_PER_STEP)),
+        }
+    }
+
+    /// Whether every search step is spent.
+    pub fn is_spent(&self) -> bool {
+        self.steps.get() == 0
+    }
+}
 
 /// A molecule derived from one parse tree, with what is needed to rank and explain it.
 #[derive(Clone, Debug)]
@@ -45,22 +72,25 @@ pub(crate) struct Assembly {
     pub underdetermined: Option<(Span, Underdetermination)>,
     pub truncated: bool,
     pub exhausted: bool,
+    /// Where a reading would pass [`MAX_ATOMS`](crate::interpret::MAX_ATOMS).
+    pub oversized: Option<Span>,
 }
 
 pub(crate) struct Ctx<'a> {
     pub dictionary: &'a Dictionary,
-    pub budget: &'a Cell<usize>,
+    pub budget: &'a Budget,
     pub exhausted: bool,
     pub failure: Option<Failure>,
     pub underdetermined: Option<(Span, Underdetermination)>,
     pub truncated: bool,
+    pub oversized: Option<Span>,
     pub single_atom: bool,
     pub whole_allowed: bool,
     pub component_end: usize,
 }
 
 impl<'a> Ctx<'a> {
-    fn new(dictionary: &'a Dictionary, budget: &'a Cell<usize>, tree: &Tree) -> Self {
+    fn new(dictionary: &'a Dictionary, budget: &'a Budget, tree: &Tree) -> Self {
         let lone = tree.seq.items.len() == 1 && tree.lead.is_none();
         let single_atom = lone
             && matches!(tree.seq.items[0].unit.kind, UnitKind::Atom { .. })
@@ -73,16 +103,25 @@ impl<'a> Ctx<'a> {
             failure: None,
             underdetermined: None,
             truncated: false,
+            oversized: None,
             single_atom,
             whole_allowed: lone && tree.tail == Tail::None,
             component_end: tree.span.end,
         }
     }
 
-    /// Charges `n` search states to the budget. Returns `false` once the budget is spent.
+    /// Charges `n` search steps to the budget. Returns `false` once the budget is spent.
     pub fn spend(&self, n: usize) -> bool {
-        let left = self.budget.get().saturating_sub(n);
-        self.budget.set(left);
+        let left = self.budget.steps.get().saturating_sub(n);
+        self.budget.steps.set(left);
+        left > 0
+    }
+
+    /// Charges one state that is discarded as soon as it is made. Returns `false`
+    /// once the allowance for discarded states is spent.
+    pub fn discard(&self) -> bool {
+        let left = self.budget.discards.get().saturating_sub(1);
+        self.budget.discards.set(left);
         left > 0
     }
 
@@ -102,13 +141,14 @@ impl<'a> Ctx<'a> {
             failure: self.failure,
             underdetermined: self.underdetermined,
             truncated: self.truncated,
-            exhausted: self.exhausted || self.budget.get() == 0,
+            exhausted: self.exhausted || self.budget.is_spent(),
+            oversized: self.oversized,
         }
     }
 }
 
-/// Assembles one parse tree under rules R1 to R4, spending at most `budget` search states.
-pub(crate) fn assemble(tree: &Tree, dictionary: &Dictionary, budget: &Cell<usize>) -> Assembly {
+/// Assembles one parse tree under rules R1 to R4, spending from `budget`.
+pub(crate) fn assemble(tree: &Tree, dictionary: &Dictionary, budget: &Budget) -> Assembly {
     let mut ctx = Ctx::new(dictionary, budget, tree);
     let mut initial = State::default();
     if let Tail::Charge(charge, _) = tree.tail {
@@ -127,11 +167,7 @@ pub(crate) fn assemble(tree: &Tree, dictionary: &Dictionary, budget: &Cell<usize
 }
 
 /// Reads a component as a salt under rule R5: leading metals become cations and the rest an anion.
-pub(crate) fn assemble_salt(
-    tree: &Tree,
-    dictionary: &Dictionary,
-    budget: &Cell<usize>,
-) -> Assembly {
+pub(crate) fn assemble_salt(tree: &Tree, dictionary: &Dictionary, budget: &Budget) -> Assembly {
     let metal = |item: &Item| matches!(item.unit.kind, UnitKind::Atom { element, .. } if element.is_metal());
     let split = tree
         .seq
@@ -208,7 +244,8 @@ pub(crate) fn assemble_salt(
                 .map(derive),
         );
         result.truncated |= ctx.truncated;
-        result.exhausted |= ctx.exhausted || budget.get() == 0;
+        result.exhausted |= ctx.exhausted || budget.is_spent();
+        result.oversized = result.oversized.or(ctx.oversized);
         if result.exhausted || !advance(&mut odometer, &choices) {
             return result;
         }
@@ -274,35 +311,58 @@ pub(crate) fn assemble_seq(
             ctx.underdetermined.get_or_insert(found);
             return Vec::new();
         }
+        let unreachable = |s: &State| match allowance {
+            Some(extra) => {
+                s.started && s.live_free() > future[i + 1].saturating_mul(3).saturating_add(extra)
+            }
+            None => false,
+        };
         let mut next = Vec::new();
+        let mut atoms = 0;
+        let mut dead_seen = false;
         for state in &states {
             for (expanded, piece) in expand(state, &item.unit, ctx) {
                 let before = expanded.stack.len();
                 for mut attached in attach(expanded, piece, item, ctx) {
+                    if attached.has_dead_atom() || unreachable(&attached) {
+                        if !ctx.discard() {
+                            ctx.exhausted = true;
+                            return Vec::new();
+                        }
+                        if !dead_seen {
+                            dead_seen = true;
+                            let at_end = future[i + 1] == 0;
+                            let progress = if unreachable(&attached) && at_end {
+                                ctx.component_end
+                            } else {
+                                item.unit.span.end
+                            };
+                            ctx.fail(open_valence(&attached, progress));
+                        }
+                        continue;
+                    }
+                    if !ctx.spend(1) {
+                        ctx.exhausted = true;
+                        return Vec::new();
+                    }
                     attached.previous = attached.stack[before..].to_vec();
+                    atoms += attached.atoms.len();
                     next.push(attached);
+                    if atoms >= 2 * STATE_ATOMS {
+                        let taken = std::mem::take(&mut next);
+                        let (kept, truncated) = dedupe(taken, STATE_LIMIT, STATE_ATOMS);
+                        ctx.truncated |= truncated;
+                        atoms = kept.iter().map(|s| s.atoms.len()).sum();
+                        next = kept;
+                    }
                 }
             }
         }
-        let unreachable = |s: &State| match allowance {
-            Some(extra) => s.started && s.live_free() > 3 * future[i + 1] + extra,
-            None => false,
-        };
-        if let Some(dead) = next.iter().find(|s| s.has_dead_atom() || unreachable(s)) {
-            let at_end = future[i + 1] == 0;
-            let progress = if unreachable(dead) && at_end {
-                ctx.component_end
-            } else {
-                item.unit.span.end
-            };
-            ctx.fail(open_valence(dead, progress));
-        }
-        next.retain(|s| !s.has_dead_atom() && !unreachable(s));
-        if !ctx.spend(next.len().max(1)) {
+        if next.is_empty() && !ctx.spend(1) {
             ctx.exhausted = true;
             return Vec::new();
         }
-        let (kept, truncated) = dedupe(next, STATE_LIMIT);
+        let (kept, truncated) = dedupe(next, STATE_LIMIT, STATE_ATOMS);
         ctx.truncated |= truncated;
         if kept.is_empty() {
             return kept;
@@ -313,13 +373,13 @@ pub(crate) fn assemble_seq(
 }
 
 fn future_atoms(seq: &Seq) -> Vec<u32> {
-    let mut sums = vec![0; seq.items.len() + 1];
+    let mut sums = vec![0u32; seq.items.len() + 1];
     for (i, item) in seq.items.iter().enumerate().rev() {
         let per_copy = match &item.unit.kind {
             UnitKind::Atom { .. } | UnitKind::Abbreviation { .. } => 1,
             UnitKind::Group { seq, .. } => future_atoms(seq)[0],
         };
-        sums[i] = sums[i + 1] + per_copy * item.unit.count();
+        sums[i] = sums[i + 1].saturating_add(per_copy.saturating_mul(item.unit.count()));
     }
     sums
 }

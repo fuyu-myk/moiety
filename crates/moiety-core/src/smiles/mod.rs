@@ -12,6 +12,7 @@ use std::fmt;
 
 pub use read::parse;
 pub use write::write;
+pub(crate) use write::write_within;
 
 /// A SMILES string that could not be read.
 #[derive(Clone, Debug, PartialEq, Eq)]

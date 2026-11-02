@@ -20,6 +20,8 @@ pub enum Code {
     TooLong,
     /// CF0003: formula needs more search than the limit allows.
     TooComplex,
+    /// CF0004: reading with more atoms than the limit allows.
+    TooLarge,
     /// CF0101: character that no token can start with.
     UnrecognizedCharacter,
     /// CF0102: group opened and never closed.
@@ -66,6 +68,7 @@ impl Code {
             Code::Empty => "CF0001",
             Code::TooLong => "CF0002",
             Code::TooComplex => "CF0003",
+            Code::TooLarge => "CF0004",
             Code::UnrecognizedCharacter => "CF0101",
             Code::UnclosedGroup => "CF0102",
             Code::UnmatchedClose => "CF0103",
@@ -106,10 +109,11 @@ impl Code {
     }
 }
 
-const ALL_CODES: [Code; 21] = [
+const ALL_CODES: [Code; 22] = [
     Code::Empty,
     Code::TooLong,
     Code::TooComplex,
+    Code::TooLarge,
     Code::UnrecognizedCharacter,
     Code::UnclosedGroup,
     Code::UnmatchedClose,

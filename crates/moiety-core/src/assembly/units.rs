@@ -133,6 +133,10 @@ fn atom(
     ctx: &mut Ctx<'_>,
 ) -> Vec<(State, Piece)> {
     let n = unit.count();
+    if element != Element::H && state.would_pass_limit(usize::try_from(n).unwrap_or(usize::MAX)) {
+        ctx.oversized.get_or_insert(unit.span);
+        return Vec::new();
+    }
     if n == 1 {
         return copies(state, element, 1, symbol, ctx)
             .into_iter()
@@ -174,6 +178,15 @@ fn abbreviation(
 ) -> Vec<(State, Piece)> {
     let definition = &ctx.dictionary.entries()[entry];
     let n = unit.count();
+    let size = definition.fragment().atoms().len();
+    if state.would_pass_limit(
+        usize::try_from(n)
+            .unwrap_or(usize::MAX)
+            .saturating_mul(size),
+    ) {
+        ctx.oversized.get_or_insert(unit.span);
+        return Vec::new();
+    }
     let attachments = definition.attachments().len();
     if attachments == 0 {
         if !ctx.whole_allowed || n != 1 || !state.atoms.is_empty() {
@@ -318,9 +331,18 @@ fn repeat_group(
     };
     let tail = group.host().unwrap_or(head);
     let n = unit.count();
+    let copies = usize::try_from(n).unwrap_or(usize::MAX);
+    let heavy = group
+        .atoms
+        .iter()
+        .filter(|a| a.element_kind() != Some(Element::H))
+        .count();
+    if state.would_pass_limit(copies.saturating_mul(heavy)) {
+        ctx.oversized.get_or_insert(unit.span);
+        return Vec::new();
+    }
     // Nested counts multiply, so every copied atom is charged.
-    let copied = usize::try_from(n).map_or(usize::MAX, |n| n.saturating_mul(group.atoms.len()));
-    if !ctx.spend(copied) {
+    if !ctx.spend(copies.saturating_mul(group.atoms.len())) {
         ctx.exhausted = true;
         return Vec::new();
     }

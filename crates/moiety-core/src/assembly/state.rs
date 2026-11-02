@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::element::Element;
+use crate::interpret::MAX_ATOMS;
 use crate::molecule::{AtomKind, BondOrder};
 use crate::span::Span;
 
@@ -206,62 +207,116 @@ impl State {
         })
     }
 
+    /// Whether adding `atoms` atoms other than hydrogen would take the reading past
+    /// [`MAX_ATOMS`]. Written hydrogens become implicit, so they do not count.
+    pub fn would_pass_limit(&self, atoms: usize) -> bool {
+        let heavy = self
+            .atoms
+            .iter()
+            .filter(|a| a.element_kind() != Some(Element::H))
+            .count();
+        heavy.saturating_add(atoms) > MAX_ATOMS
+    }
+
     /// Total free valence of atoms later units can still reach.
     pub fn live_free(&self) -> u32 {
         self.atoms.iter().map(|atom| u32::from(atom.free())).sum()
     }
 
-    fn key(&self) -> StateKey {
-        StateKey {
-            atoms: self
-                .atoms
-                .iter()
-                .map(|a| (a.kind, a.valence, a.used, a.charge))
-                .collect(),
-            bonds: self.bonds.iter().map(|b| (b.a, b.b, b.order)).collect(),
-            stack: self.stack.clone(),
-            pending: self.pending.iter().map(|p| p.heads.clone()).collect(),
-            started: self.started,
-            charge_left: self.charge_left,
+    /// A hash of what makes two states interchangeable: see [`State::same_key`].
+    fn key_hash(&self) -> u64 {
+        let mut hash = mix(0, u64::from(self.started));
+        hash = mix(
+            hash,
+            u64::from(self.charge_left.unsigned_abs()) << 1 | u64::from(self.charge_left < 0),
+        );
+        for atom in &self.atoms {
+            let kind = match atom.kind {
+                AtomKind::Element(element) => u64::from(element.atomic_number()),
+                AtomKind::Attachment => 0,
+            };
+            let charge = u64::from(atom.charge.unsigned_abs()) << 1 | u64::from(atom.charge < 0);
+            hash = mix(
+                hash,
+                kind << 24 | u64::from(atom.valence) << 16 | u64::from(atom.used) << 8 | charge,
+            );
         }
+        for bond in &self.bonds {
+            hash = mix(hash, bond.a as u64);
+            hash = mix(hash, bond.b as u64 ^ (bond.order as u64) << 56);
+        }
+        for &index in &self.stack {
+            hash = mix(hash, index as u64);
+        }
+        for pending in &self.pending {
+            hash = mix(hash, pending.heads.len() as u64);
+            for &head in &pending.heads {
+                hash = mix(hash, head as u64);
+            }
+        }
+        hash
+    }
+
+    /// Whether the two states can only lead to the same molecules, so one may stand for both.
+    fn same_key(&self, other: &State) -> bool {
+        let atom = |a: &AAtom| (a.kind, a.valence, a.used, a.charge);
+        let bond = |b: &ABond| (b.a, b.b, b.order);
+        self.started == other.started
+            && self.charge_left == other.charge_left
+            && self.stack == other.stack
+            && self.atoms.len() == other.atoms.len()
+            && self.atoms.iter().map(atom).eq(other.atoms.iter().map(atom))
+            && self.bonds.len() == other.bonds.len()
+            && self.bonds.iter().map(bond).eq(other.bonds.iter().map(bond))
+            && self.pending.len() == other.pending.len()
+            && self
+                .pending
+                .iter()
+                .zip(&other.pending)
+                .all(|(a, b)| a.heads == b.heads)
     }
 }
 
-#[derive(PartialEq, Eq, Hash)]
-struct StateKey {
-    atoms: Vec<(AtomKind, u8, u8, i8)>,
-    bonds: Vec<(usize, usize, BondOrder)>,
-    stack: Vec<usize>,
-    pending: Vec<Vec<usize>>,
-    started: bool,
-    charge_left: i32,
+fn mix(hash: u64, value: u64) -> u64 {
+    (hash.rotate_left(5) ^ value).wrapping_mul(0x517c_c1b7_2722_0a95)
 }
 
-/// Removes duplicate states, keeping the best score, then keeps at most `limit` of them.
-/// Returns whether states were dropped by the limit.
-pub(crate) fn dedupe(states: Vec<State>, limit: usize) -> (Vec<State>, bool) {
-    let mut index: HashMap<StateKey, usize> = HashMap::new();
+/// Removes duplicate states, keeping the best score, then keeps the best-scored
+/// states up to `limit` states and `atom_limit` atoms in all. Returns whether
+/// states were dropped by the limits.
+pub(crate) fn dedupe(states: Vec<State>, limit: usize, atom_limit: usize) -> (Vec<State>, bool) {
+    let mut index: HashMap<u64, Vec<usize>> = HashMap::new();
     let mut kept: Vec<State> = Vec::new();
     for state in states {
-        match index.entry(state.key()) {
-            std::collections::hash_map::Entry::Occupied(slot) => {
-                let i = *slot.get();
+        let slots = index.entry(state.key_hash()).or_default();
+        match slots.iter().copied().find(|&i| kept[i].same_key(&state)) {
+            Some(i) => {
                 if state.score > kept[i].score {
                     kept[i] = state;
                 }
             }
-            std::collections::hash_map::Entry::Vacant(slot) => {
-                slot.insert(kept.len());
+            None => {
+                slots.push(kept.len());
                 kept.push(state);
             }
         }
     }
-    let truncated = kept.len() > limit;
-    if truncated {
-        kept.sort_by_key(|s| std::cmp::Reverse(s.score));
-        kept.truncate(limit);
+    let atoms: usize = kept.iter().map(|s| s.atoms.len()).sum();
+    if kept.len() <= limit && atoms <= atom_limit {
+        return (kept, false);
     }
-    (kept, truncated)
+    kept.sort_by_key(|s| std::cmp::Reverse(s.score));
+    let mut atoms = 0;
+    let fits = kept
+        .iter()
+        .take(limit)
+        .take_while(|s| {
+            atoms += s.atoms.len();
+            atoms <= atom_limit
+        })
+        .count();
+    kept.truncate(fits);
+    (kept, true)
 }
 
 fn can_bond(x: &AAtom, y: &AAtom) -> bool {

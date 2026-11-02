@@ -108,7 +108,8 @@ Syntax errors:
 | --- | --- |
 | CF0001 | Empty formula or empty component |
 | CF0002 | Formula longer than 256 bytes |
-| CF0003 | Formula needs more search than the limit allows (200,000 steps per component by default, where a step is a search state or an atom copied by a group count) |
+| CF0003 | Formula needs more work than the limits allow. Each component may take 200,000 search steps by default, where a step is a search state or an atom copied by a group count, and discard up to ten states that cannot complete for each step. Writing canonical SMILES for the readings of the whole formula may visit 25 atoms for each step |
+| CF0004 | A reading would have more than 1,000 atoms, counting every copy that a count makes and every component but not hydrogens held by other atoms. The formula fails even if smaller readings exist, so a size limit never decides between readings |
 | CF0102 | A group is opened and never closed |
 | CF0103 | A close bracket has no matching open |
 | CF0104 | Warning: a group opened with one bracket kind is closed with the other |

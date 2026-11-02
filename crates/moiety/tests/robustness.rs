@@ -92,3 +92,38 @@ proptest! {
         prop_assert_eq!(first, second);
     }
 }
+
+#[test]
+fn fuzzed_inputs_stop_at_their_limits() {
+    for (input, code) in [
+        ("CFCyNNNNNNNNNNN2", "CF0003"),
+        ("OCTrOCCOOTrOCCOOO", "CF0202"),
+        ("H((CH2)100)100H", "CF0004"),
+    ] {
+        match moiety::interpret(input) {
+            Interpretation::Invalid { diagnostics } => {
+                assert_eq!(diagnostics[0].code.as_str(), code, "{input}")
+            }
+            other => panic!("{input}: expected invalid, got {}", other.kind()),
+        }
+    }
+}
+
+#[test]
+fn limits_never_hide_a_reading() {
+    for input in ["91TsOH", "50Ts2O", "50Ph3COH.50Ph3COH"] {
+        match moiety::interpret(input) {
+            Interpretation::Invalid { diagnostics } => {
+                assert_eq!(diagnostics[0].code.as_str(), "CF0004", "{input}")
+            }
+            other => panic!("{input}: expected invalid, got {}", other.kind()),
+        }
+    }
+    for input in [
+        "C((CH2)60CH3)4",
+        "CH3((CH2)100)4CH3",
+        "C((CH2)40CH3)4.C((CH2)40CH3)4",
+    ] {
+        assert_eq!(moiety::interpret(input).kind(), "unique", "{input}");
+    }
+}

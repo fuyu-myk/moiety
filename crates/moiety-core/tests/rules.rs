@@ -213,9 +213,31 @@ fn caret_charges_do_not_take_a_count() {
 
 #[test]
 fn repeated_groups_spend_the_search_budget() {
-    let nested = format!("{}CH2{}", "(".repeat(18), ")2".repeat(18));
-    assert_eq!(error_code(&nested), Code::TooComplex);
+    let tight = Options {
+        search_limit: 400,
+        suggestions: false,
+        ..Options::default()
+    };
+    match interpret("CH3(CH2)100CH3", &dictionary(), &tight) {
+        Interpretation::Invalid { diagnostics } => {
+            assert_eq!(diagnostics[0].code, Code::TooComplex)
+        }
+        other => panic!("expected invalid, got {}", other.kind()),
+    }
     reads_as("CH3(CH2)100CH3", &format!("C{}C", "C".repeat(100)));
+}
+
+#[test]
+fn readings_are_limited_in_size() {
+    let nested = format!("{}CH2{}", "(".repeat(18), ")2".repeat(18));
+    assert_eq!(error_code(&nested), Code::TooLarge);
+    assert_eq!(error_code("H((CH2)100)100H"), Code::TooLarge);
+    assert_eq!(error_code("(((((CH2)100)100)100)100)100"), Code::TooLarge);
+    assert_eq!(error_code("100Ph3COH"), Code::TooLarge);
+    reads_as(
+        "40Ph3COH",
+        &vec!["OC(c1ccccc1)(c1ccccc1)c1ccccc1"; 40].join("."),
+    );
 }
 
 #[test]
