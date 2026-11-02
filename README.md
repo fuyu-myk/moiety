@@ -130,6 +130,14 @@ cargo run --release -p moiety-cli -- conformance
 
 CI runs the same commands, including the conformance gate and a playground build, from [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
+The fuzzing harness in [fuzz](fuzz) reads and draws arbitrary input under memory and time limits, as the playground does. It needs a nightly toolchain and `cargo-fuzz`:
+
+```text
+python3 -I fuzz/seed.py
+cd fuzz
+cargo +nightly fuzz run -s none playground corpus/playground -- -dict=formula.dict -max_len=300 -timeout=3 -rss_limit_mb=512 -malloc_limit_mb=256
+```
+
 ## Status
 
 The parser meets every item of the v1.0 gate: the metrics above hold, the conformance suite is published and runnable by a third party, CI runs it on every push, the inverse writer is complete, and the crates are published on crates.io.
