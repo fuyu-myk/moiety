@@ -234,3 +234,121 @@ fn view_box_fits_the_drawing() {
     assert_eq!(num(-0.001), "0");
     assert_eq!(num(2.345_67), "2.35");
 }
+
+/// The strokes of every bond of the given order, as (x1, y1, x2, y2), keyed by bond index.
+fn strokes_of(svg: &str, order: &str) -> Vec<(usize, Vec<[f64; 4]>)> {
+    let mut found = Vec::new();
+    let marker = format!("<g class=\"bond {order}\" data-bond=\"");
+    let mut rest = svg;
+    while let Some(start) = rest.find(&marker) {
+        rest = &rest[start + marker.len()..];
+        let index: usize = rest[..rest.find('"').expect("closing quote")]
+            .parse()
+            .expect("bond index");
+        let group = &rest[..rest.find("</g>").expect("group end")];
+        let lines = group
+            .split("<line ")
+            .skip(1)
+            .filter(|line| !line.starts_with("class=\"hit\""))
+            .map(|line| {
+                let value = |name: &str| -> f64 {
+                    let at = line.find(&format!("{name}=\"")).expect("coordinate") + name.len() + 2;
+                    line[at..at + line[at..].find('"').expect("closing quote")]
+                        .parse()
+                        .expect("number")
+                };
+                [value("x1"), value("y1"), value("x2"), value("y2")]
+            })
+            .collect();
+        found.push((index, lines));
+    }
+    found
+}
+
+/// Positions of a stroke's two ends along the bond axis from atom `a` to atom `b`.
+fn along_axis(stroke: [f64; 4], a: Point, b: Point) -> (f64, f64) {
+    let axis = (b - a).normalized().expect("bonded atoms are apart");
+    let project = |x: f64, y: f64| (Point::new(x, y) - a).dot(axis);
+    (project(stroke[0], stroke[1]), project(stroke[2], stroke[3]))
+}
+
+#[test]
+fn parallel_strokes_end_level_at_labels() {
+    for input in [
+        "TsCl",
+        "CH3SO2Cl",
+        "CH3S(O)CH3",
+        "CH3CH2CN",
+        "NCCH2CN",
+        "PhNO2",
+    ] {
+        let reading = top(input);
+        let molecule = &reading.molecule;
+        let options = SvgOptions::default();
+        let svg = render_svg(molecule, &options);
+        let positions = crate::layout::layout(molecule);
+        for order in ["double", "triple"] {
+            for (index, lines) in strokes_of(&svg, order) {
+                let bond = molecule.bonds()[index];
+                let labelled = |atom: usize| molecule.atoms()[atom].element() != Some(Element::C);
+                let placed = |atom: usize| positions.position(atom).expect("every atom is placed");
+                let (a, b) = (placed(bond.a), placed(bond.b));
+                let scale = options.bond_length;
+                let ends: Vec<(f64, f64)> = lines
+                    .iter()
+                    .map(|&line| along_axis(line, a * scale, b * scale))
+                    .collect();
+                for pair in ends.windows(2) {
+                    if labelled(bond.a) {
+                        assert!(
+                            (pair[0].0 - pair[1].0).abs() < 0.01,
+                            "{input} bond {index} start {ends:?}"
+                        );
+                    }
+                    if labelled(bond.b) {
+                        assert!(
+                            (pair[0].1 - pair[1].1).abs() < 0.01,
+                            "{input} bond {index} end {ends:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn bonds_meet_double_bonds_without_gaps() {
+    for input in [
+        "CH2=CHCH=CH2",
+        "CH2=CHCH3",
+        "CH3COCH3",
+        "CH3COOH",
+        "(CH3)2C=CH2",
+    ] {
+        let svg = render_reading_svg(&top(input), &SvgOptions::default());
+        let singles: Vec<[f64; 4]> = strokes_of(&svg, "single")
+            .into_iter()
+            .flat_map(|(_, lines)| lines)
+            .collect();
+        let doubles: Vec<[f64; 4]> = strokes_of(&svg, "double")
+            .into_iter()
+            .flat_map(|(_, lines)| lines)
+            .collect();
+        let on_segment = |p: Point, l: &[f64; 4]| {
+            let (a, b) = (Point::new(l[0], l[1]), Point::new(l[2], l[3]));
+            let t = ((p - a).dot(b - a) / (b - a).dot(b - a)).clamp(0.0, 1.0);
+            p.distance(a + (b - a) * t) < 0.01
+        };
+        let ends = |l: &[f64; 4]| [Point::new(l[0], l[1]), Point::new(l[2], l[3])];
+        let joined = doubles.iter().any(|double| {
+            ends(double)
+                .iter()
+                .any(|&p| singles.iter().any(|single| on_segment(p, single)))
+        });
+        assert!(
+            joined,
+            "{input}: no single bond meets a double-bond stroke\n{svg}"
+        );
+    }
+}

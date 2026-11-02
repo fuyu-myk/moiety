@@ -16,6 +16,9 @@ const TRIPLE_GAP: f64 = 0.15;
 /// How much shorter the inner stroke of a double bond is at each bare vertex, in bond lengths.
 const INNER_INSET: f64 = 0.14;
 
+/// Longest a mitred stroke may extend or shrink at a vertex, in bond lengths.
+const MAX_MITER: f64 = 0.5;
+
 /// Strokes shorter than this, in pixels, are left out.
 const MIN_STROKE: f64 = 1.0;
 
@@ -64,12 +67,10 @@ pub(super) fn render(
             ends(from, to),
             num(hit)
         ));
-        for stroke in strokes(scene, &bond, along) {
-            if let Some((start, end)) = trimmed(scene, &bond, along, stroke) {
-                bounds.include(start);
-                bounds.include(end);
-                out.push_str(&format!("<line {}/>", ends(start, end)));
-            }
+        for (start, end) in stroke_ends(scene, &bond, along, &strokes(scene, &bond, along)) {
+            bounds.include(start);
+            bounds.include(end);
+            out.push_str(&format!("<line {}/>", ends(start, end)));
         }
     }
     out.push_str("</g>");
@@ -146,15 +147,21 @@ fn strokes(scene: &Scene, bond: &Bond, along: Point) -> Vec<Stroke> {
 
 /// The unit normal toward the side that the second stroke of a double bond
 /// goes on: the ring centre, or the side with more neighbours. `None` centres
-/// the pair, as for a terminal `C=O` or a bond with balanced neighbours.
+/// the pair, as for a terminal `C=O`, `CH2=CH2`, or a bond with balanced
+/// neighbours. A bare terminal carbon, as in `CH2=CH-`, keeps the main stroke
+/// on the axis so the next bond joins it.
 fn inner_side(scene: &Scene, bond: &Bond, along: Point) -> Option<Point> {
     let across = along.perpendicular();
     let toward = |side: f64| if side >= 0.0 { across } else { -across };
     if let Some(centre) = ring_centre(scene, bond.a, bond.b) {
         return Some(toward((centre - scene.points[bond.a]).dot(across)));
     }
-    let degree = |atom: usize| scene.adjacency[atom].len();
-    if degree(bond.a) == 1 || degree(bond.b) == 1 {
+    let terminal = |atom: usize| scene.adjacency[atom].len() == 1;
+    let labelled_terminal = |atom: usize| terminal(atom) && scene.labels[atom].is_some();
+    if (terminal(bond.a) && terminal(bond.b))
+        || labelled_terminal(bond.a)
+        || labelled_terminal(bond.b)
+    {
         return None;
     }
     let balance: i32 = [(bond.a, bond.b), (bond.b, bond.a)]
@@ -186,30 +193,84 @@ fn ring_centre(scene: &Scene, a: usize, b: usize) -> Option<Point> {
         .map(|(i, _)| scene.ring_centres[i])
 }
 
-/// The ends of `stroke` after cutting it back at labels and bare vertices, or
-/// `None` when nothing visible is left.
-fn trimmed(scene: &Scene, bond: &Bond, along: Point, stroke: Stroke) -> Option<(Point, Point)> {
+/// The visible ends of every stroke that is long enough to draw.
+fn stroke_ends(
+    scene: &Scene,
+    bond: &Bond,
+    along: Point,
+    strokes: &[Stroke],
+) -> Vec<(Point, Point)> {
     let (from, to) = (scene.points[bond.a], scene.points[bond.b]);
-    let start_cut = cut(scene, bond.a, stroke, along);
-    let end_cut = cut(scene, bond.b, stroke, -along);
-    (from.distance(to) - start_cut - end_cut >= MIN_STROKE).then(|| {
-        (
-            from + stroke.offset + along * start_cut,
-            to + stroke.offset - along * end_cut,
-        )
-    })
+    let starts = end_cuts(scene, bond.a, bond.b, along, strokes);
+    let finishes = end_cuts(scene, bond.b, bond.a, -along, strokes);
+    strokes
+        .iter()
+        .zip(starts.into_iter().zip(finishes))
+        .filter(|&(_, (start, finish))| from.distance(to) - start - finish >= MIN_STROKE)
+        .map(|(stroke, (start, finish))| {
+            (
+                from + stroke.offset + along * start,
+                to + stroke.offset - along * finish,
+            )
+        })
+        .collect()
 }
 
-/// How far `stroke` stays clear of `atom`, measured along `direction` away from it.
-fn cut(scene: &Scene, atom: usize, stroke: Stroke, direction: Point) -> f64 {
-    match &scene.labels[atom] {
-        Some(label) => label
-            .keep_out(scene.metrics.font)
+/// How far each stroke is cut back from `atom`, measured along `direction` away
+/// from it. At a label every stroke takes the same cut, the largest any of them
+/// needs, so parallel strokes end level whatever the bond's angle. At a bare
+/// vertex an inner stroke keeps its inset and an offset stroke is mitred to the
+/// neighbouring bond on its side, so the strokes meet that bond exactly.
+fn end_cuts(
+    scene: &Scene,
+    atom: usize,
+    other: usize,
+    direction: Point,
+    strokes: &[Stroke],
+) -> Vec<f64> {
+    if let Some(label) = &scene.labels[atom] {
+        let rects = label.keep_out(scene.metrics.font);
+        let cut = strokes
             .iter()
-            .filter_map(|&rect| exit(stroke.offset, direction, rect))
-            .fold(0.0, f64::max),
-        None => stroke.inset,
+            .flat_map(|stroke| {
+                rects
+                    .iter()
+                    .filter_map(move |&rect| exit(stroke.offset, direction, rect))
+            })
+            .fold(0.0, f64::max);
+        return vec![cut; strokes.len()];
     }
+    strokes
+        .iter()
+        .map(|stroke| {
+            if stroke.inset > 0.0 {
+                stroke.inset
+            } else {
+                miter(scene, atom, other, direction, stroke.offset)
+            }
+        })
+        .collect()
+}
+
+/// Where a stroke offset from the bond axis meets the nearest neighbouring bond
+/// on its own side, as a distance along `direction`. Negative values extend the
+/// stroke past the atom. Zero when no neighbour lies on that side or the stroke
+/// runs along the axis.
+fn miter(scene: &Scene, atom: usize, other: usize, direction: Point, offset: Point) -> f64 {
+    let side = direction.cross(offset);
+    if side.abs() < EPSILON {
+        return 0.0;
+    }
+    let limit = MAX_MITER * scene.metrics.bond;
+    scene.adjacency[atom]
+        .iter()
+        .filter(|&&(next, _)| next != other)
+        .filter_map(|&(next, _)| (scene.points[next] - scene.points[atom]).normalized())
+        .filter(|&toward| direction.cross(toward) * side > EPSILON)
+        .map(|toward| -offset.cross(toward) / direction.cross(toward))
+        .filter(|cut| cut.abs() <= limit)
+        .min_by(|a, b| a.abs().total_cmp(&b.abs()))
+        .unwrap_or(0.0)
 }
 
 /// Distance along the ray from `origin` in `direction` to where it leaves
