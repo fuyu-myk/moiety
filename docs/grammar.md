@@ -277,7 +277,7 @@ Readings are ordered by score, highest first, then by canonical SMILES. Ranks st
 
 ### 7.4 Direction
 
-Every bond made between two units is **forward** when a unit bonds to a host on its left, and **backward** when a pending unit bonds to an anchor on its right or when the host is the attachment atom of a reversed dictionary spelling. A reading is `LeftToRight` when all such bonds are forward, `RightToLeft` when all are backward, and `Mixed` otherwise. A component with a single unit is `LeftToRight`.
+Every bond made between two units, other than a bond to a written hydrogen, is **forward** when a unit bonds to a host on its left, and **backward** when a pending unit bonds to an anchor on its right or when the host is the attachment atom of a reversed dictionary spelling. A reading is `LeftToRight` when all such bonds are forward, `RightToLeft` when all are backward, and `Mixed` otherwise. A component with a single unit is `LeftToRight`.
 
 ## 8. Diagnostics
 

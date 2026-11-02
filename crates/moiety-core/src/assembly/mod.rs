@@ -1,17 +1,22 @@
 //! Valence resolution: turns a parse tree into every molecule it can denote.
 
+mod derive;
+mod failure;
 mod state;
 mod units;
 
 use std::cell::Cell;
 
+use derive::{derive, pentavalent_nitrogen_without_oxo};
+pub(crate) use failure::Failure;
+use failure::{bond_failure, no_host, open_valence};
 use state::{AAtom, Pending, State, dedupe};
 use units::{Piece, expand};
 
 use crate::diagnostic::Code;
 use crate::dictionary::Dictionary;
 use crate::element::Element;
-use crate::molecule::{Atom, AtomKind, Bond, BondOrder, Molecule};
+use crate::molecule::{AtomKind, BondOrder, Molecule};
 use crate::parser::{Item, Seq, Tail, Tree, UnitKind};
 use crate::reading::Underdetermination;
 use crate::span::Span;
@@ -30,33 +35,6 @@ pub(crate) struct Derivation {
     pub forward: u32,
     pub backward: u32,
     pub charge_sites: Vec<Span>,
-}
-
-/// Why a branch of the search died, located in normalized coordinates.
-#[derive(Clone, Debug)]
-pub(crate) struct Failure {
-    pub code: Code,
-    pub message: String,
-    pub primary: (Span, String),
-    pub secondary: Vec<(Span, String)>,
-    pub progress: usize,
-}
-
-impl Failure {
-    pub fn new(code: Code, message: &str, span: Span, label: String, progress: usize) -> Self {
-        Self {
-            code,
-            message: message.to_string(),
-            primary: (span, label),
-            secondary: Vec::new(),
-            progress,
-        }
-    }
-
-    fn with(mut self, span: Span, label: String) -> Self {
-        self.secondary.push((span, label));
-        self
-    }
 }
 
 /// Everything one parse tree produced.
@@ -411,10 +389,11 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
             if bonded.is_empty() {
                 ctx.fail(bond_failure(unit.span, bond.map(|b| b.1)));
             }
+            let events = if hydrogen { 0 } else { count(heads.len()) };
             bonded
                 .into_iter()
                 .map(|mut s| {
-                    s.forward += count(heads.len());
+                    s.forward += events;
                     s.stack.extend(&push);
                     s
                 })
@@ -450,6 +429,12 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                     return Vec::new();
                 }
                 let explicit = pending.iter().find_map(|p| p.bond).or(bond);
+                let events = count(
+                    heads
+                        .iter()
+                        .filter(|&&h| state.atoms[h].element_kind() != Some(Element::H))
+                        .count(),
+                );
                 let bonded = bond_all(state, head, &heads, explicit);
                 if bonded.is_empty() {
                     ctx.fail(bond_failure(unit.span, explicit.map(|b| b.1)));
@@ -457,7 +442,7 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                 return bonded
                     .into_iter()
                     .map(|mut s| {
-                        s.backward += count(heads.len());
+                        s.backward += events;
                         for p in &pending {
                             s.stack.extend(&p.push);
                         }
@@ -484,10 +469,12 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                     let mut s = state.clone();
                     s.link(host, head, k, bond.map(|b| b.1));
                     absorb_hydrogen(&mut s, host, head);
-                    if s.atoms[host].reversed_site {
-                        s.backward += 1;
-                    } else {
-                        s.forward += 1;
+                    if !hydrogen {
+                        if s.atoms[host].reversed_site {
+                            s.backward += 1;
+                        } else {
+                            s.forward += 1;
+                        }
                     }
                     s.stack.extend(&push);
                     s
@@ -537,67 +524,6 @@ fn absorb_hydrogen(state: &mut State, a: usize, b: usize) {
     let group = &mut state.atoms[heavy].group;
     if h.start == group.end || h.end == group.start {
         *group = group.cover(h);
-    }
-}
-
-fn open_valence(state: &State, progress: usize) -> Failure {
-    let reachable =
-        |i: usize| state.stack.contains(&i) || state.pending.iter().any(|p| p.heads.contains(&i));
-    let open = (0..state.atoms.len())
-        .filter(|&i| state.atoms[i].free() > 0)
-        .min_by_key(|&i| reachable(i))
-        .map(|i| &state.atoms[i])
-        .expect("called only for states with open valence");
-    let free = open.free();
-    let plural = if free == 1 { "" } else { "s" };
-    Failure::new(
-        Code::OpenValence,
-        "valence left open at the end of the formula",
-        open.group,
-        format!("this atom still has {free} open valence{plural}"),
-        progress,
-    )
-}
-
-fn no_host(state: &State, unit: Span, end: usize) -> Failure {
-    let heavy = |&&atom: &&usize| state.atoms[atom].element_kind() != Some(Element::H);
-    let terminal = state
-        .stack
-        .iter()
-        .rev()
-        .find(heavy)
-        .or(state.stack.last())
-        .map_or(unit, |&atom| state.atoms[atom].group);
-    Failure::new(
-        Code::NoHost,
-        "chain cannot continue past a terminal group",
-        terminal,
-        "this group has no free valence left".into(),
-        unit.start,
-    )
-    .with(
-        Span::new(unit.start, end),
-        "but more units follow it".into(),
-    )
-}
-
-fn bond_failure(unit: Span, explicit: Option<Span>) -> Failure {
-    match explicit {
-        Some(token) => Failure::new(
-            Code::BondNotPossible,
-            "these atoms cannot form this bond",
-            token,
-            "this bond is stronger than the atoms can take".into(),
-            unit.start,
-        )
-        .with(unit, "the unit it bonds".into()),
-        None => Failure::new(
-            Code::BondNotPossible,
-            "these atoms cannot form this bond",
-            unit,
-            "this unit cannot bond to the atom before it".into(),
-            unit.start,
-        ),
     }
 }
 
@@ -690,89 +616,4 @@ fn complete(mut state: State, tree: &Tree, ctx: &mut Ctx<'_>) -> Option<State> {
         return None;
     }
     Some(state)
-}
-
-fn pentavalent_nitrogen_without_oxo(state: &State) -> Option<usize> {
-    (0..state.atoms.len()).find(|&i| {
-        let atom = &state.atoms[i];
-        atom.element_kind() == Some(Element::N)
-            && atom.charge == 0
-            && atom.valence == 5
-            && !state.bonds.iter().any(|b| {
-                b.order == BondOrder::Double
-                    && b.other(i)
-                        .is_some_and(|o| state.atoms[o].element_kind() == Some(Element::O))
-            })
-    })
-}
-
-/// Builds the final molecule, folding hydrogens into implicit counts.
-fn derive(state: State) -> Derivation {
-    let mut neighbours = vec![Vec::new(); state.atoms.len()];
-    for (index, bond) in state.bonds.iter().enumerate() {
-        neighbours[bond.a].push((bond.b, index));
-        neighbours[bond.b].push((bond.a, index));
-    }
-    let collapsible = |i: usize| {
-        let atom = &state.atoms[i];
-        atom.element_kind() == Some(Element::H)
-            && atom.charge == 0
-            && neighbours[i].len() == 1
-            && state.atoms[neighbours[i][0].0]
-                .element_kind()
-                .is_some_and(|e| e != Element::H)
-    };
-    let mut index = vec![None; state.atoms.len()];
-    let mut atoms = Vec::new();
-    let mut atom_spans = Vec::new();
-    for (i, atom) in state.atoms.iter().enumerate() {
-        if collapsible(i) {
-            continue;
-        }
-        index[i] = Some(atoms.len());
-        atoms.push(Atom {
-            kind: atom.kind,
-            charge: atom.charge,
-            hydrogens: atom.hydrogens,
-            aromatic: atom.aromatic,
-        });
-        atom_spans.push(atom.group);
-    }
-    for i in 0..state.atoms.len() {
-        if collapsible(i) {
-            let heavy = index[neighbours[i][0].0].expect("heavy atoms are kept");
-            atoms[heavy].hydrogens += 1;
-        }
-    }
-    let mut bonds = Vec::new();
-    let mut bond_spans = Vec::new();
-    for bond in &state.bonds {
-        if let (Some(a), Some(b)) = (index[bond.a], index[bond.b]) {
-            bonds.push(Bond {
-                a,
-                b,
-                order: bond.order,
-            });
-            bond_spans.push(
-                bond.token
-                    .unwrap_or_else(|| state.atoms[bond.a].group.cover(state.atoms[bond.b].group)),
-            );
-        }
-    }
-    let charge_sites = state
-        .atoms
-        .iter()
-        .filter(|a| a.budget_charge)
-        .map(|a| a.span)
-        .collect();
-    Derivation {
-        molecule: Molecule::from_parts(atoms, bonds),
-        atom_spans,
-        bond_spans,
-        score: state.score,
-        forks: state.forks,
-        forward: state.forward,
-        backward: state.backward,
-        charge_sites,
-    }
 }
