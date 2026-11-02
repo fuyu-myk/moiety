@@ -376,9 +376,22 @@ impl<'a> Writer<'a> {
                 .path_between(from, to, None)
                 .expect("a component is connected");
         }
-        let ends: Vec<usize> = (0..self.nodes.len())
-            .filter(|&n| self.edges[n].len() <= 1 && !self.is_inline(n))
+        let skeleton_degree = |n: usize| {
+            self.edges[n]
+                .iter()
+                .filter(|&&(o, _)| !self.is_inline(o))
+                .count()
+        };
+        let terminal: Vec<usize> = (0..self.nodes.len())
+            .filter(|&n| !self.is_inline(n) && self.edges[n].len() <= 1)
             .collect();
+        let ends: Vec<usize> = if terminal.is_empty() {
+            (0..self.nodes.len())
+                .filter(|&n| !self.is_inline(n) && skeleton_degree(n) <= 1)
+                .collect()
+        } else {
+            terminal
+        };
         let starts = match attachments.first() {
             Some(&n) => vec![n],
             None if ends.is_empty() => vec![0],
@@ -437,7 +450,9 @@ impl<'a> Writer<'a> {
                 if Some(other) == previous || Some(other) == next {
                     continue;
                 }
-                if self.is_inline(other) {
+                if self.is_inline(other)
+                    && (self.is_halogen(other) || !self.has_branches(node, previous, next))
+                {
                     *inline.entry(self.label(other, false, true)).or_default() += 1;
                     continue;
                 }
@@ -468,6 +483,17 @@ impl<'a> Writer<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Whether `node` has side chains that must be written in parentheses.
+    fn has_branches(&self, node: usize, previous: Option<usize>, next: Option<usize>) -> bool {
+        self.edges[node].iter().any(|&(other, _)| {
+            Some(other) != previous && Some(other) != next && !self.is_inline(other)
+        })
+    }
+
+    fn is_halogen(&self, node: usize) -> bool {
+        matches!(self.nodes[node], Node::Atom(a) if matches!(self.molecule.atoms()[a].element(), Some(Element::F | Element::CL | Element::BR | Element::I)))
     }
 
     fn is_heteroatom(&self, node: usize) -> bool {
@@ -602,6 +628,7 @@ mod tests {
             "*CC(=O)O",
             "OCC(O)CO",
             "CC(C)CC(C)(C)C",
+            "O=CCOC(C=O)=O",
         ] {
             round_trips(smiles);
         }
