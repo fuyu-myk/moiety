@@ -9,6 +9,7 @@ use moiety::writer::condense;
 use moiety::{
     ChargeConvention, Dictionary, Interpretation, Options, Reading, default_dictionary, smiles,
 };
+use moiety_draw::{SvgOptions, render_html, render_reading_svg};
 
 use crate::args::{Args, Command, USAGE};
 
@@ -183,8 +184,41 @@ fn write(args: &Args, dictionary: &Dictionary) -> Result<ExitCode> {
     })
 }
 
-fn draw(_args: &Args, _dictionary: &Dictionary, _options: &Options) -> Result<ExitCode> {
-    bail!("drawing is not available in this build")
+fn draw(args: &Args, dictionary: &Dictionary, options: &Options) -> Result<ExitCode> {
+    let [input] = &args.inputs[..] else {
+        bail!(
+            "{} draws one formula at a time",
+            if args.command == Command::Html {
+                "html"
+            } else {
+                "draw"
+            }
+        );
+    };
+    let result = moiety::interpret_with(input, dictionary, options);
+    let readings = result.readings();
+    if readings.is_empty() {
+        eprint!("{}", describe(input, &result));
+        return Ok(ExitCode::FAILURE);
+    }
+    let svg_options = SvgOptions {
+        title: Some(input.clone()),
+        ..SvgOptions::default()
+    };
+    let output = if args.command == Command::Html {
+        render_html(input, readings, &svg_options)
+    } else {
+        let reading = readings.get(args.reading - 1).with_context(|| {
+            format!(
+                "{input} has {} reading(s), not {}",
+                readings.len(),
+                args.reading
+            )
+        })?;
+        render_reading_svg(reading, &svg_options)
+    };
+    emit(args, &output)?;
+    Ok(ExitCode::SUCCESS)
 }
 
 fn conformance(args: &Args, dictionary: &Dictionary, options: &Options) -> Result<ExitCode> {
@@ -309,6 +343,27 @@ fn list_dictionary(dictionary: &Dictionary) -> String {
 mod tests {
     use super::*;
     use moiety::interpret;
+
+    #[test]
+    fn draws_and_pages_a_formula() {
+        let args = crate::args::parse(&["draw".to_string(), "PhCH2OH".to_string()]).unwrap();
+        let options = Options::default();
+        assert!(
+            matches!(draw(&args, default_dictionary(), &options), Ok(code) if code == ExitCode::SUCCESS)
+        );
+        let too_far = crate::args::parse(&[
+            "draw".into(),
+            "PhCH2OH".into(),
+            "--reading".into(),
+            "2".into(),
+        ])
+        .unwrap();
+        assert!(draw(&too_far, default_dictionary(), &options).is_err());
+        let invalid = crate::args::parse(&["html".to_string(), "CH3CH3OH".to_string()]).unwrap();
+        assert!(
+            matches!(draw(&invalid, default_dictionary(), &options), Ok(code) if code == ExitCode::FAILURE)
+        );
+    }
 
     #[test]
     fn describes_each_result_kind() {

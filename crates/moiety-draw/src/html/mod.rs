@@ -33,7 +33,7 @@ pub fn render_html(input: &str, readings: &[Reading], options: &SvgOptions) -> S
     if !readings.is_empty() {
         page.push_str("<ol class=\"readings\">\n");
         for reading in readings {
-            page.push_str(&card(reading, options));
+            page.push_str(&card(input, reading, options));
         }
         page.push_str("</ol>\n");
     }
@@ -73,7 +73,32 @@ fn summary(count: usize) -> String {
     format!("<p class=\"summary\">{text}</p>\n")
 }
 
-fn card(reading: &Reading, options: &SvgOptions) -> String {
+/// Score, direction and the ambiguities a reading resolved, with the choice it made at each.
+fn notes(input: &str, reading: &Reading) -> String {
+    let mut notes = format!(
+        "<p class=\"meta\">Score {}, written {}</p>\n",
+        reading.score,
+        reading.direction.as_str()
+    );
+    if !reading.ambiguities.is_empty() {
+        notes.push_str("<ul class=\"ambiguities\">\n");
+        for ambiguity in &reading.ambiguities {
+            let text = input
+                .get(ambiguity.span.start..ambiguity.span.end)
+                .unwrap_or_default();
+            notes.push_str(&format!(
+                "<li>{} at <code>{}</code>: {}</li>\n",
+                ambiguity.class,
+                escape(text),
+                escape(&ambiguity.choice)
+            ));
+        }
+        notes.push_str("</ul>\n");
+    }
+    notes
+}
+
+fn card(input: &str, reading: &Reading, options: &SvgOptions) -> String {
     let title = format!("Reading {}: {}", reading.rank, reading.smiles);
     let drawing = render_reading_svg(
         reading,
@@ -87,11 +112,13 @@ fn card(reading: &Reading, options: &SvgOptions) -> String {
             "<li class=\"reading\" data-rank=\"{rank}\">\n",
             "<h2>Reading {rank}</h2>\n",
             "<p class=\"smiles\"><code>{smiles}</code></p>\n",
+            "{notes}",
             "<figure>{drawing}</figure>\n",
             "</li>\n"
         ),
         rank = reading.rank,
         smiles = escape(&reading.smiles),
+        notes = notes(input, reading),
         drawing = drawing,
     )
 }
@@ -131,6 +158,8 @@ mod tests {
         assert_eq!(html.matches("<svg ").count(), 2);
         assert!(html.contains("<h2>Reading 2</h2>"));
         assert!(html.contains("<code>Cl[Co]Cl</code>"));
+        assert!(html.contains("<li>symbol-segmentation at <code>CO</code>: Co</li>"));
+        assert!(html.contains("Score -6, written left-to-right"));
         assert!(html.contains("data-span="));
         assert!(html.contains("prefers-color-scheme"));
     }
