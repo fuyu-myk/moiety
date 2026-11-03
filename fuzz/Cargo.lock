@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "moiety"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "moiety-core",
  "serde",
@@ -103,11 +103,11 @@ dependencies = [
 
 [[package]]
 name = "moiety-core"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "moiety-draw"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "moiety-core",
 ]

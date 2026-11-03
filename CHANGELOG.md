@@ -2,9 +2,9 @@
 
 Notable changes to the moiety crates. Versions follow [Semantic Versioning](https://semver.org/); before 1.0, a minor version can change how formulas are read. The grammar, the ranking policy, the bundled dictionary and the conformance suite carry their own versions, given where they change.
 
-## Unreleased
+## 0.3.0 - 2026-11-02
 
-Dictionary 1.2.0.
+Dictionary 1.2.0, conformance suite 0.3.0.
 
 ### Added
 
@@ -14,6 +14,7 @@ Dictionary 1.2.0.
 - `C6H6` reads as benzene, a conventional reading like `C6H5` for phenyl.
 - A fuzzing harness in `fuzz/` that reads and draws arbitrary input under memory and time limits.
 - CF0004 for a reading with more than 1,000 atoms, counting every copy that a count makes.
+- `moiety --version`.
 
 ### Changed
 

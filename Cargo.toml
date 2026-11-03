@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/moiety-core", "crates/moiety", "crates/moiety-draw", "crates/moiety-cli", "crates/moiety-wasm"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
@@ -12,9 +12,9 @@ homepage = "https://github.com/fuyu-myk/moiety"
 keywords = ["chemistry", "cheminformatics", "smiles", "parser", "condensed-formula"]
 
 [workspace.dependencies]
-moiety-core = { path = "crates/moiety-core", version = "0.2.0" }
-moiety = { path = "crates/moiety", version = "0.2.0" }
-moiety-draw = { path = "crates/moiety-draw", version = "0.2.0" }
+moiety-core = { path = "crates/moiety-core", version = "0.3.0" }
+moiety = { path = "crates/moiety", version = "0.3.0" }
+moiety-draw = { path = "crates/moiety-draw", version = "0.3.0" }
 serde = { version = "=1.0.229", features = ["derive"] }
 toml = "=1.1.8"
 thiserror = "=2.0.21"
