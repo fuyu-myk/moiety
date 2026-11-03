@@ -288,3 +288,137 @@ fn lays_out_large_readings_with_unit_bonds() {
         assert!((points[bond.a].distance(points[bond.b]) - 1.0).abs() < TOLERANCE);
     }
 }
+
+/// The direction of the bond from `from` to `to`, in degrees clockwise from the positive `x` axis.
+fn heading(layout: &Layout, from: usize, to: usize) -> f64 {
+    (layout.positions()[to] - layout.positions()[from])
+        .angle()
+        .to_degrees()
+}
+
+fn neighbours(molecule: &Molecule, atom: usize) -> Vec<usize> {
+    molecule.adjacency()[atom].iter().map(|&(n, _)| n).collect()
+}
+
+fn element_index(molecule: &Molecule, symbol: &str) -> usize {
+    molecule
+        .atoms()
+        .iter()
+        .position(|atom| atom.element().is_some_and(|e| e.symbol() == symbol))
+        .unwrap_or_else(|| panic!("the molecule has {symbol}"))
+}
+
+#[test]
+fn hubs_spread_alike_branches_evenly_with_one_pointing_up() {
+    for (input, centre) in [
+        ("P(C6H5)3", "P"),
+        ("N(CH2CH2OH)3", "N"),
+        ("Al(OiPr)3", "Al"),
+    ] {
+        let molecule = read(input);
+        let layout = checked(input, &molecule);
+        assert_chain_angles(input, &molecule, &layout);
+        let hub = element_index(&molecule, centre);
+        let headings: Vec<f64> = neighbours(&molecule, hub)
+            .into_iter()
+            .map(|n| heading(&layout, hub, n))
+            .collect();
+        assert!(
+            headings.iter().any(|h| (h + 90.0).abs() < 1e-6),
+            "{input}: one branch points up, {headings:?}"
+        );
+    }
+}
+
+#[test]
+fn four_way_hubs_are_crosses_with_the_odd_branch_up() {
+    for (input, centre, up) in [("Ph3PO", "P", Some("O")), ("C(CH2OH)4", "C", None)] {
+        let molecule = read(input);
+        let layout = checked(input, &molecule);
+        assert_chain_angles(input, &molecule, &layout);
+        let hub = if centre == "C" {
+            (0..molecule.atoms().len())
+                .find(|&a| neighbours(&molecule, a).len() == 4)
+                .unwrap()
+        } else {
+            element_index(&molecule, centre)
+        };
+        for n in neighbours(&molecule, hub) {
+            let h = heading(&layout, hub, n).rem_euclid(90.0);
+            assert!(h.min(90.0 - h) < 1e-6, "{input}: bonds lie on the axes");
+        }
+        if let Some(symbol) = up {
+            let odd = element_index(&molecule, symbol);
+            assert!((heading(&layout, hub, odd) + 90.0).abs() < 1e-6, "{input}");
+        }
+    }
+}
+
+#[test]
+fn crowded_hubs_stretch_their_bonds_and_keep_even_angles() {
+    let molecule = read("B(C6F5)3");
+    let layout = layout(&molecule);
+    let points = layout.positions();
+    let hub = element_index(&molecule, "B");
+    let arms = neighbours(&molecule, hub);
+    let lengths: Vec<f64> = arms
+        .iter()
+        .map(|&n| points[hub].distance(points[n]))
+        .collect();
+    assert!(
+        lengths
+            .iter()
+            .all(|&l| l > 1.0 + TOLERANCE && l <= 1.5 + TOLERANCE)
+    );
+    assert!(lengths.iter().all(|&l| (l - lengths[0]).abs() < TOLERANCE));
+    for bond in molecule.bonds().iter().filter(|b| b.a != hub && b.b != hub) {
+        assert!((points[bond.a].distance(points[bond.b]) - 1.0).abs() < TOLERANCE);
+    }
+    for (i, &a) in arms.iter().enumerate() {
+        for &b in &arms[i + 1..] {
+            assert!((angle(&layout, hub, a, b) - 120.0).abs() < 1e-6);
+        }
+    }
+    for (i, a) in points.iter().enumerate() {
+        for b in &points[i + 1..] {
+            assert!(a.distance(*b) >= 0.6, "no fluorines collide");
+        }
+    }
+    for (index, ring) in layout.rings().iter().enumerate() {
+        assert_regular("B(C6F5)3", &layout, index, ring);
+    }
+}
+
+#[test]
+fn groups_without_three_alike_branches_are_not_hubs() {
+    let molecule = read("(CH3)3CCOCl");
+    let layout = checked("pivaloyl chloride", &molecule);
+    let tertiary = (0..molecule.atoms().len())
+        .find(|&a| neighbours(&molecule, a).len() == 4)
+        .unwrap();
+    let acyl = neighbours(&molecule, tertiary)
+        .into_iter()
+        .find(|&n| neighbours(&molecule, n).len() == 3)
+        .unwrap();
+    assert!(
+        heading(&layout, tertiary, acyl).abs() < 1e-6,
+        "the chain still runs to the right"
+    );
+}
+
+#[test]
+fn hubs_that_turns_can_part_keep_unit_bonds() {
+    for (name, molecule) in [
+        ("trityl tert-butane", read("(C6H5)3CC(CH3)3")),
+        (
+            "tert-butyltriphenylsilane",
+            smiles::parse("CC(C)(C)[Si](c1ccccc1)(c1ccccc1)c1ccccc1").unwrap(),
+        ),
+        (
+            "TIPS triflate",
+            smiles::parse("FC(F)(F)S(=O)(=O)O[Si](C(C)C)(C(C)C)C(C)C").unwrap(),
+        ),
+    ] {
+        checked(name, &molecule);
+    }
+}

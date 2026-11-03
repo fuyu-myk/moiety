@@ -23,6 +23,7 @@ Grammar version 3, dictionary 1.4.0.
 - The generated round-trip corpus grows one molecule in eight each from pyridine and from thiophene.
 - A locant directly before a benzene ring may follow its substituents, listing the positions they leave: `2-Cl-1,4-C6H3(OH)2` is 2-chlorohydroquinone.
 - Locants may list positions up to 8, which naphthalene needs.
+- Drawings start from a hub, an atom outside the rings with three or more alike branches, as in `PPh3`, `Ph3PO` or `(MeO)3PO`, and space its branches evenly with one pointing up; four branches make an upright cross. When the branches crowd each other and no flip or turn parts them without bending the hub, its bonds stretch equally, up to 1.5 bond lengths, so `B(C6F5)3` keeps its rings at 120 degrees.
 
 ### Fixed
 

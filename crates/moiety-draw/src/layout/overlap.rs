@@ -1,6 +1,11 @@
 //! Clash removal: acyclic branches are flipped or turned about single bonds
 //! until no two unbonded atoms sit closer than [`CLASH`] bond lengths, no move
 //! helps, or the work allowed for the component runs out.
+//!
+//! A component with a hub keeps its shape where it can. Flips, which keep every
+//! bond angle, are tried alone first, then turns. The turns are kept when they
+//! part the hub's branches without moving its bonds; otherwise the hub's bonds
+//! stretch, when that parts them, before any branch turns.
 
 use std::cell::Cell;
 use std::f64::consts::{FRAC_PI_3, FRAC_PI_6};
@@ -8,6 +13,7 @@ use std::f64::consts::{FRAC_PI_3, FRAC_PI_6};
 use moiety_core::{BondOrder, Molecule};
 
 use super::geometry::Point;
+use super::hub;
 use crate::graph::{self, Adjacency, bond_between, shortest_path};
 use crate::rings::RingInfo;
 
@@ -52,33 +58,34 @@ struct Scene<'a> {
     work: Cell<usize>,
 }
 
-/// Moves branches of `component` until none of its atoms clash or no move reduces the clashes.
+/// Moves branches of `component` until none of its atoms clash or no move reduces
+/// the clashes, keeping the shape of its `hub`, if it has one, as described above.
 pub(super) fn resolve(
     positions: &mut [Point],
     component: &[usize],
     molecule: &Molecule,
     adjacency: &Adjacency,
     rings: &RingInfo,
+    hub: Option<usize>,
 ) {
-    let scene = Scene {
+    let scene = || Scene {
         molecule,
         adjacency,
         rings,
         component,
         work: Cell::new(MAX_WORK),
     };
-    for _ in 0..MAX_MOVES {
-        let clashes = scene.clashes(positions);
-        let Some(best) = clashes
-            .iter()
-            .find_map(|&(a, b)| scene.best_move(positions, a, b))
-        else {
-            return;
-        };
-        let moved = best.apply(positions);
-        for (&atom, point) in best.branch.iter().zip(moved) {
-            positions[atom] = point;
-        }
+    let Some(hub) = hub else {
+        scene().settle(positions, true);
+        return;
+    };
+    scene().settle(positions, false);
+    let mut turned = positions.to_vec();
+    scene().settle(&mut turned, true);
+    if !hub::kept(positions, &turned, adjacency, hub) && hub::stretch(positions, adjacency, hub) {
+        scene().settle(positions, true);
+    } else {
+        positions.copy_from_slice(&turned);
     }
 }
 
@@ -100,6 +107,24 @@ impl Move {
 }
 
 impl Scene<'_> {
+    /// Applies the best move for the closest clash a move helps, over and over,
+    /// with turns only when `turns` is set.
+    fn settle(&self, positions: &mut [Point], turns: bool) {
+        for _ in 0..MAX_MOVES {
+            let clashes = self.clashes(positions);
+            let Some(best) = clashes
+                .iter()
+                .find_map(|&(a, b)| self.best_move(positions, a, b, turns))
+            else {
+                return;
+            };
+            let moved = best.apply(positions);
+            for (&atom, point) in best.branch.iter().zip(moved) {
+                positions[atom] = point;
+            }
+        }
+    }
+
     /// Every clashing pair of unbonded atoms, closest first.
     fn clashes(&self, positions: &[Point]) -> Vec<(usize, usize)> {
         let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
@@ -116,11 +141,11 @@ impl Scene<'_> {
     }
 
     /// The move about a bond between `a` and `b` that reduces the clash penalty most, if any does.
-    fn best_move(&self, positions: &[Point], a: usize, b: usize) -> Option<Move> {
+    fn best_move(&self, positions: &[Point], a: usize, b: usize, turns: bool) -> Option<Move> {
         let path = shortest_path(self.adjacency, a, b, None)?;
         let mut best: Option<(f64, Move)> = None;
         for pair in path.windows(2) {
-            for candidate in self.moves_about(pair[0], pair[1]) {
+            for candidate in self.moves_about(pair[0], pair[1], turns) {
                 let change = self.penalty_change(positions, &candidate)?;
                 let cost = match candidate.motion {
                     Motion::Flip => change,
@@ -134,8 +159,9 @@ impl Scene<'_> {
         best.map(|(_, candidate)| candidate)
     }
 
-    /// Candidate moves of the smaller side of the bond `x`-`y`, if it is an acyclic single bond.
-    fn moves_about(&self, x: usize, y: usize) -> Vec<Move> {
+    /// Candidate moves of the smaller side of the bond `x`-`y`, if it is an acyclic
+    /// single bond: the flip, and the turns when `turns` is set.
+    fn moves_about(&self, x: usize, y: usize, turns: bool) -> Vec<Move> {
         let Some(bond) = bond_between(self.adjacency, x, y) else {
             return Vec::new();
         };
@@ -149,7 +175,7 @@ impl Scene<'_> {
         } else {
             (y_side, x, y)
         };
-        let turns = if graph::is_linear(self.molecule, self.adjacency, pivot) {
+        let turns = if !turns || graph::is_linear(self.molecule, self.adjacency, pivot) {
             &[][..]
         } else {
             &TURNS[..]
@@ -208,7 +234,14 @@ mod tests {
             Point::new(0.2, 0.4),
         ];
         assert!(positions[0].distance(positions[3]) < CLASH);
-        resolve(&mut positions, &[0, 1, 2, 3], &molecule, &adjacency, &rings);
+        resolve(
+            &mut positions,
+            &[0, 1, 2, 3],
+            &molecule,
+            &adjacency,
+            &rings,
+            None,
+        );
         assert!(positions[0].distance(positions[3]) >= CLASH);
         assert!((positions[2].distance(positions[3]) - 1.0).abs() < 1e-9);
         assert!(
