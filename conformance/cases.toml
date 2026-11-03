@@ -647,6 +647,50 @@ expect = "unique"
 smiles = ["*c1ccc(-c2ccc(OC)cc2)cc1"]
 
 [[case]]
+id = "locant/after-the-substituent"
+corpus = "curated"
+input = "-C6H4OMe-4"
+expect = "unique"
+smiles = ["*c1ccc(OC)cc1"]
+
+[[case]]
+id = "locant/after-the-substituent-in-a-group"
+corpus = "curated"
+input = "P(C6H4OMe-4)3"
+expect = "unique"
+smiles = ["COc1ccc(P(c2ccc(OC)cc2)c2ccc(OC)cc2)cc1"]
+
+[[case]]
+id = "locant/after-the-substituent-para"
+corpus = "curated"
+input = "-C6H4Me-p"
+expect = "unique"
+smiles = ["*c1ccc(C)cc1"]
+
+[[case]]
+id = "locant/after-the-substituent-two-copies"
+corpus = "curated"
+input = "-C6H3Me2-2,6"
+expect = "unique"
+smiles = ["*c1c(C)cccc1C"]
+
+[[case]]
+id = "locant/after-the-substituent-lists-position-one"
+corpus = "adversarial"
+input = "-C6H4Cl-1"
+expect = "invalid"
+code = "CF0108"
+span = [7, 9]
+
+[[case]]
+id = "locant/after-the-substituent-no-ring"
+corpus = "adversarial"
+input = "SO4-2"
+expect = "invalid"
+code = "CF0108"
+span = [3, 5]
+
+[[case]]
 id = "locant/after-the-ring-lists-position-one"
 corpus = "adversarial"
 input = "-C6H4-1-OMe"

@@ -60,6 +60,7 @@ The input is split into components at `.` first. Each component is lexed into a 
 | Charge | `+`; `-` at the end of a component; `^` followed by an optional count and a sign | |
 | Descriptor | At the start of a component: `(E)-`, `(Z)-`, `(R)-`, `(S)-`, any parenthesized list of those letters or `+` `-` `±` separated by commas followed by `-`, and `cis-`, `trans-`, `rac-` | Skipped, warning CF0301 |
 | Locant | At the start of a component, after a descriptor, an open bracket or a bond sign: digits separated by commas, or `o`, `m` or `p`, then `-` and more input | `4-`, `2,4-`, `p-`. Section 6.11. Its digits are not also a count. A longer dictionary spelling that starts there, such as `p-Tol`, replaces it |
+| Trailing locant | `-`, then digits separated by commas or `o`, `m` or `p`, at the end of a component or before a close bracket | The `-4` of `C6H4OMe-4`. Section 6.11. Its digits are not also a count |
 
 A trailing `-` emits both a Marker edge and a Charge edge. Every other character position must be covered by at least one edge.
 
@@ -94,11 +95,13 @@ unit       = ( atom | abbreviation | group ) , [ count ] ;
 group      = open , [ bond ] , unit-seq , close ;
 arene      = substituent , { "-" , substituent } , [ bond ] , ring
            | locant , ring ;
-numbered   = ring , "-" , substituent , { "-" , substituent } ;
+numbered   = ring , "-" , substituent , { "-" , substituent }
+           | ring , unit , { [ bond ] , unit } , trailing-locant ;
 substituent = locant , unit , { [ bond ] , unit } ;
 ring       = "C6H" , [ "2" | "3" | "4" ] ;
 locant     = position , { "," , position } , "-"
            | ( "o" | "m" | "p" ) , "-" ;
+trailing-locant = "-" , ( position , { "," , position } | "o" | "m" | "p" ) ;
 position   = "1" | "2" | "3" | "4" | "5" | "6" ;
 trail      = charge | marker ;
 charge     = [ count ] , ( "+" | "-" )
@@ -261,11 +264,13 @@ A locant numbers the ring of its arene (section 4): a unit written `C6H4`, `C6H3
 
 **Locants after the ring.** A numbered ring (section 4) is written with its substituents after it, each as `-`, a locant and the substituent: `C6H4-4-OMe`, `C6H3-3,5-(CF3)2`, `C6H3-2-Cl-4-F`. Position 1 is then the ring's bond to what comes before it, either the host or, when the ring starts its group or component, the open valence that group or component leaves: `CH2C6H4-4-OMe`, `P(C6H4-4-OMe)3`, `-C6H4-4-OMe`. The locants must not list position 1, and with it they must number exactly the substituted positions. `o-`, `m-` and `p-` place a single substituent as before: `C6H4-p-OMe`. The units of the last substituent continue the sequence from its positions, so a charge or marker can follow them, as in `MeOC6H4-4-NH3+`. A substituent may itself be a numbered ring, which takes every substituent written after it: `-C6H4-4-C6H4-4-OMe` is 4'-methoxybiphenyl-4-yl.
 
+**Locants after their substituent.** A ring may instead be followed by one substituent and then `-` and its locant: `C6H4OMe-4`, `C6H4Me-p`, `C6H3Me2-2,6`, `P(C6H4OMe-4)3`. The substituent is everything between the ring and the locant, and the locant ends the ring's group or component, so no charge or marker follows it. It numbers the last ring written before it, so in `CH3C6H4C6H4OMe-4` the first ring keeps no locant and stays underdetermined. It reads as the same substituent written after the ring does, so `C6H4OMe-4` is `C6H4-4-OMe`.
+
 Bonds to substituents written before their ring are backward under section 7.4. Bonds to substituents written after it, and to later units, are forward. A ring with no locant stays underdetermined under section 6.6, so `CH3C6H4CH3` still names no isomer.
 
 **Errors.** CF0108 reports a locant that:
 
-- has no ring after it in its sequence;
+- has no ring after it in its sequence, or, written after its substituent, none before it;
 - lists a position that is not a single digit from 1 to 6, or one position twice;
 - lists a different number of positions than its substituent has copies;
 - with the other locants of its ring, does not number exactly the substituted positions as above;
@@ -274,7 +279,7 @@ Bonds to substituents written before their ring are backward under section 7.4. 
 - leaves no open position on its ring while more units follow the ring;
 - lists position 1 after the ring.
 
-Rings other than benzene are numbered by the dictionary instead, through spellings such as `2-C5H4N` (section 9). Not covered: locants written after the substituent they place, as in `C6H4OMe-4`.
+Rings other than benzene are numbered by the dictionary instead, through spellings such as `2-C5H4N` (section 9). Not covered: several substituents that each end with their own locant, as in `C6H3Cl-2-F-4`.
 
 ## 7. Interpretation
 

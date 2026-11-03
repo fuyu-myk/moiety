@@ -226,6 +226,12 @@ impl Parser<'_> {
     }
 
     fn unexpected(edge: Edge) -> SyntaxError {
+        if let EdgeKind::TrailingLocant(_) = edge.kind {
+            return arene::mismatch(
+                edge.span,
+                "this locant has no unnumbered benzene ring before it",
+            );
+        }
         let what = match edge.kind {
             EdgeKind::Count(_) => "a count must follow an atom, abbreviation or group",
             EdgeKind::Bond(_) | EdgeKind::Marker(_) => "a bond must sit between two units",
@@ -383,6 +389,7 @@ impl Parser<'_> {
                     self.pos += 1;
                     Ok(UnitKind::Group { bond, seq })
                 }
+                EdgeKind::TrailingLocant(_) => Err(Self::unexpected(edge)),
                 _ if seq.items.is_empty() => Err(Self::unexpected(edge)),
                 _ => Err(Self::unclosed(open)),
             },
