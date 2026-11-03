@@ -59,8 +59,8 @@ The input is split into components at `.` first. Each component is lexed into a 
 | Marker | `-` `=` `#` at the start or end of a component | An open valence of that order |
 | Charge | `+`; `-` at the end of a component; `^` followed by an optional count and a sign | |
 | Descriptor | At the start of a component: `(E)-`, `(Z)-`, `(R)-`, `(S)-`, any parenthesized list of those letters or `+` `-` `±` separated by commas followed by `-`, and `cis-`, `trans-`, `rac-` | Skipped, warning CF0301 |
-| Locant | At the start of a component, after a descriptor, an open bracket or a bond sign: digits separated by commas, or `o`, `m` or `p`, then `-` and more input | `4-`, `2,4-`, `p-`. Section 6.11. Its digits are not also a count. A longer dictionary spelling that starts there, such as `p-Tol`, replaces it |
-| Trailing locant | `-`, then digits separated by commas or `o`, `m` or `p`, at the end of a component or before a close bracket | The `-4` of `C6H4OMe-4`. Section 6.11. Its digits are not also a count |
+| Locant | At the start of a component, after a descriptor, an open bracket or a bond sign: digits separated by commas, or `o`, `m`, `p`, `ortho`, `meta` or `para`, then `-` and more input | `4-`, `2,4-`, `p-`. Section 6.11. Its digits are not also a count. A longer dictionary spelling that starts there, such as `p-Tol`, replaces it |
+| Trailing locant | `-`, then digits separated by commas or a word as for a locant, at the end of a component or before a close bracket | The `-4` of `C6H4OMe-4`. Section 6.11. Its digits are not also a count |
 
 A trailing `-` emits both a Marker edge and a Charge edge. Every other character position must be covered by at least one edge.
 
@@ -68,7 +68,7 @@ A trailing `-` emits both a Marker edge and a Charge edge. Every other character
 
 When no complete path exists, the lexer reports the first position that no edge can leave:
 
-- If the uncovered text is an uppercase letter followed by lowercase letters, such as `Xy` or `Alloc` without a dictionary entry, the interpretation is `Underdetermined` with reason `UnknownAbbreviation`.
+- If the uncovered text is an uppercase letter followed by lowercase letters, such as `Xy` or `Mtt` without a dictionary entry, the interpretation is `Underdetermined` with reason `UnknownAbbreviation`.
 - Otherwise the interpretation is `Invalid` with CF0101.
 
 ### 3.3 Lattice priors
@@ -89,19 +89,25 @@ Every edge carries an integer prior. Priors only order readings that survive val
 ```
 formula    = component , { "." , component } ;
 component  = [ descriptor ] , [ count ] , [ marker ] , unit-seq , [ trail ] ;
-unit-seq   = ( arene | unit ) , { [ bond ] , unit } , [ [ bond ] , numbered ]
+unit-seq   = ( arene | unit | bracketed-ring ) ,
+             { [ bond ] , ( unit | bracketed-ring ) | bond , locant , ring } ,
+             [ [ bond ] , numbered ]
            | numbered ;
 unit       = ( atom | abbreviation | group ) , [ count ] ;
 group      = open , [ bond ] , unit-seq , close ;
-arene      = substituent , { "-" , substituent } , [ bond ] , ring
+arene      = substituent , { "-" , substituent } , [ bond ] , ( ring | phenyl )
            | locant , ring ;
 numbered   = ring , "-" , substituent , { "-" , substituent }
-           | ring , unit , { [ bond ] , unit } , trailing-locant ;
+           | ring , suffixed , { "-" , locant , suffixed } , trailing-locant ;
+bracketed-ring = ring , bracketed , { bracketed } ;
+suffixed   = [ bond ] , unit , { [ bond ] , unit } ;
+bracketed  = open , locant , unit , { [ bond ] , unit } , close ;
+phenyl     = abbreviation ;
 substituent = locant , unit , { [ bond ] , unit } ;
 ring       = "C6H" , [ "2" | "3" | "4" ] ;
-locant     = position , { "," , position } , "-"
-           | ( "o" | "m" | "p" ) , "-" ;
-trailing-locant = "-" , ( position , { "," , position } | "o" | "m" | "p" ) ;
+locant     = ( position , { "," , position } | relative ) , "-" ;
+relative   = "o" | "m" | "p" | "ortho" | "meta" | "para" ;
+trailing-locant = "-" , ( position , { "," , position } | relative ) ;
 position   = "1" | "2" | "3" | "4" | "5" | "6" ;
 trail      = charge | marker ;
 charge     = [ count ] , ( "+" | "-" )
@@ -113,7 +119,7 @@ close      = ")" | "]" ;
 count      = digit , { digit } ;
 ```
 
-An arene starts the sequence of a group, or of a component with no leading marker. A component count cannot come before an arene, since its digits would run into the locant's. Each substituent ends at a `-` followed by a locant, or at the ring: the first carbon with count 6 directly followed by hydrogen with a count of 4 or less. Units after the ring, including later `C6H4`s, are read as usual. A numbered ring, whose substituents follow it, ends its sequence: its last substituent runs to the end of the group or component.
+An arene starts the sequence of a group or of a component, after any leading marker, and an arene with no substituents may also follow a bond inside a sequence. A component count cannot come before an arene, since its digits would run into the locant's. Each substituent ends at a `-` followed by a locant, or at the ring: the first carbon with count 6 directly followed by hydrogen with a count of 4 or less. Units after the ring, including later `C6H4`s, are read as usual. A numbered ring whose substituents follow it unbracketed ends its sequence: its last substituent runs to the end of the group or component. A ring with bracketed substituents does not.
 
 The grammar is deliberately permissive. Parsing is a chart parse over the lattice and its result is a parse forest: one tree per combination of lattice path and grammatical choice. The grammatical choices are:
 
@@ -248,7 +254,7 @@ When no tree of a component yields a molecule, and the component begins with one
 
 ### 6.11 Numbered benzene rings
 
-A locant numbers the ring of its arene (section 4): a unit written `C6H4`, `C6H3`, `C6H2` or `C6H`, read as benzene. The ring's **substituted positions** are the ones without hydrogen: two for `C6H4`, three for `C6H3`, four for `C6H2` and five for `C6H`.
+A locant numbers the ring of its arene (section 4): a unit written `C6H4`, `C6H3`, `C6H2` or `C6H`, read as benzene, or a substituted phenyl as described below. The ring's **substituted positions** are the ones without hydrogen: two for `C6H4`, three for `C6H3`, four for `C6H2` and five for `C6H`.
 
 **Substituents.** Each substituent is assembled like a group (section 6.2), so the `MeO` of `4-MeOC6H4CHO` is a methoxy group and the `O2N` of `4-O2NC6H4OH` a nitro group. A substituent that is one counted unit, such as `Cl2`, `Me3` or `(MeO)2`, puts one copy at each position its locant lists, so the count must equal the number of positions. Any other substituent lists one position. Each copy bonds to the ring by its first open atom. A bond written before the ring, as in `4-MeO-C6H4`, sets the order of the last substituent's bond.
 
@@ -258,13 +264,19 @@ A locant numbers the ring of its arene (section 4): a unit written `C6H4`, `C6H3
 - When a substituent lists position 1, the substituents must fill every substituted position, and nothing bonds after the ring: `1,4-Cl2C6H4`, `1,3,5-Me3C6H3`.
 - A locant directly before the ring, with no substituent, is the only locant of the ring. It lists the positions the units after the ring bond to, and must list every substituted position: `1,4-C6H4(OH)2`, `1,3,5-C6H3(CO2H)3`.
 
-**Ortho, meta and para.** `o-`, `m-` and `p-` place the two substituents of a `C6H4` ring at positions 1 and 2, 1 and 3, or 1 and 4, and are the only locant of their ring. A substituent with one copy takes the second position, so `p-MeC6H4OH` is 4-methylphenol. A substituent with two copies, as in `p-Cl2C6H4`, or a locant directly before the ring, as in `p-C6H4(CO2Me)2`, takes both.
+**Ortho, meta and para.** `o-`, `m-` and `p-`, or `ortho-`, `meta-` and `para-`, place the two substituents of a `C6H4` ring at positions 1 and 2, 1 and 3, or 1 and 4, and are the only locant of their ring. A substituent with one copy takes the second position, so `p-MeC6H4OH` is 4-methylphenol. A substituent with two copies, as in `p-Cl2C6H4`, or a locant directly before the ring, as in `p-C6H4(CO2Me)2`, takes both.
 
 **After the ring.** The positions left for later units are pushed on the host stack lowest on top, so the next unit bonds to the lowest one, and the host search steps back to the next once it is filled. A counted unit whose host is one of these positions puts one copy on each open position of that ring, lowest first, instead of all on one atom: `o-C6H4(CO2H)2` is phthalic acid and `o-C6H4Cl2` is 1,2-dichlorobenzene.
 
+**A locant in a chain.** A locant directly before its ring may also follow a bond inside a sequence, or a leading marker: `HO-p-C6H4-CO2H`, `CH3-o-C6H4-CH3`, `-p-C6H4-`. The ring bonds by its lowest listed position to the unit before it, and its other listed positions are left for the units after it. A ring with substituents before it may follow a leading marker too, which then takes position 1: `-4-MeOC6H4`.
+
+**Substituted phenyl.** Before a dictionary spelling of phenyl, one whose fragment is `*c1ccccc1` and whose spelling states no hydrogen count, such as `Ph` but not `C6H5`, locants number a substituted phenyl ring as they number `C6H4`: `4-ClPh` is 4-chlorophenyl, `3,5-(CF3)2PhBr` is 1-bromo-3,5-bis(trifluoromethyl)benzene, and `(4-FPh)3P` is tris(4-fluorophenyl)phosphine. Position 1 is the phenyl's own attachment, so the locants must not list it, and the ring has one substituted position for each listed position and one for position 1. The phenyl is numbered only when no benzene ring such as `C6H4` comes later in the sequence; otherwise it is part of a substituent, as the benzyl group of `4-CH2PhC6H4OH` is.
+
 **Locants after the ring.** A numbered ring (section 4) is written with its substituents after it, each as `-`, a locant and the substituent: `C6H4-4-OMe`, `C6H3-3,5-(CF3)2`, `C6H3-2-Cl-4-F`. Position 1 is then the ring's bond to what comes before it, either the host or, when the ring starts its group or component, the open valence that group or component leaves: `CH2C6H4-4-OMe`, `P(C6H4-4-OMe)3`, `-C6H4-4-OMe`. The locants must not list position 1, and with it they must number exactly the substituted positions. `o-`, `m-` and `p-` place a single substituent as before: `C6H4-p-OMe`. The units of the last substituent continue the sequence from its positions, so a charge or marker can follow them, as in `MeOC6H4-4-NH3+`. A substituent may itself be a numbered ring, which takes every substituent written after it: `-C6H4-4-C6H4-4-OMe` is 4'-methoxybiphenyl-4-yl.
 
-**Locants after their substituent.** A ring may instead be followed by one substituent and then `-` and its locant: `C6H4OMe-4`, `C6H4Me-p`, `C6H3Me2-2,6`, `P(C6H4OMe-4)3`. The substituent is everything between the ring and the locant, and the locant ends the ring's group or component, so no charge or marker follows it. It numbers the last ring written before it, so in `CH3C6H4C6H4OMe-4` the first ring keeps no locant and stays underdetermined. It reads as the same substituent written after the ring does, so `C6H4OMe-4` is `C6H4-4-OMe`.
+**Locants after their substituent.** A ring may instead be followed by its substituents with each locant after its own substituent: `C6H4OMe-4`, `C6H4Me-p`, `C6H3Me2-2,6`, `C6H3Cl-2-F-4`, `P(C6H4OMe-4)3`. Between two substituents the locant stands between hyphens, as the `-2-` of `C6H3Cl-2-F-4`. Each substituent runs from the ring, or from the locant before it, to its own locant, and the last locant ends the ring's group or component, so no charge or marker follows it. The last locant numbers the last ring written before it, so in `CH3C6H4C6H4OMe-4` the first ring keeps no locant and stays underdetermined. The substituents read as they do written after the ring, so `C6H4OMe-4` is `C6H4-4-OMe`.
+
+**Bracketed locants.** A ring may also be followed by bracketed substituents that each start with their locant: `C6H4(4-OMe)`, `C6H3(2-Cl)(4-F)`, `C6H4(p-Me)`. The locants must not list position 1, which is the ring's bond to the unit before it or, when the ring starts its group or component, the position left for the units after the brackets: `HOCH2C6H4(4-OMe)`, `C6H4(4-OMe)CH2OH`. A bracket that holds a benzene ring such as `C6H4` of its own, as in the `(4-ClC6H4)` of `C6H4(4-ClC6H4)`, is an ordinary group. A phenyl spelling in the bracket is part of the substituent: `C6H4(4-CH2Ph)Br` is 4-benzylbromobenzene.
 
 Bonds to substituents written before their ring are backward under section 7.4. Bonds to substituents written after it, and to later units, are forward. A ring with no locant stays underdetermined under section 6.6, so `CH3C6H4CH3` still names no isomer.
 
@@ -274,12 +286,12 @@ Bonds to substituents written before their ring are backward under section 7.4. 
 - lists a position that is not a single digit from 1 to 6, or one position twice;
 - lists a different number of positions than its substituent has copies;
 - with the other locants of its ring, does not number exactly the substituted positions as above;
-- is `o-`, `m-` or `p-` on a ring other than `C6H4`, or beside another locant;
+- is `o-`, `m-` or `p-`, or spelled out, on a ring without exactly two substituted positions, or beside another locant;
 - stands directly before the ring after other substituents;
 - leaves no open position on its ring while more units follow the ring;
-- lists position 1 after the ring.
+- lists position 1 after the ring, in brackets after it, or before a phenyl spelling.
 
-Rings other than benzene are numbered by the dictionary instead, through spellings such as `2-C5H4N` (section 9). Not covered: several substituents that each end with their own locant, as in `C6H3Cl-2-F-4`.
+Rings other than benzene are numbered by the dictionary instead, through spellings such as `2-C5H4N` (section 9). Not covered: locants on substituted heteroaryl rings, such as `5-Br-2-C5H3N`, a charge or marker after a trailing locant, and bracketed and trailing locants on one ring, as in `C6H3(4-OMe)Cl-2`.
 
 ## 7. Interpretation
 

@@ -306,6 +306,57 @@ fn locants_can_follow_their_substituent() {
 }
 
 #[test]
+fn several_substituents_can_end_with_their_locants() {
+    reads_as("-C6H3Cl-2-F-4", "*c1ccc(F)cc1Cl");
+    reads_as("(C6H3Cl-2-F-4)COOH", "OC(=O)c1ccc(F)cc1Cl");
+    reads_as("-C6H2Cl2-2,6-CH3-4", "*c1c(Cl)cc(C)cc1Cl");
+    assert_eq!(error_code("-C6H3Cl-2-F-2"), Code::LocantMismatch);
+}
+
+#[test]
+fn a_bare_locant_can_number_a_ring_in_a_chain() {
+    reads_as("HO-p-C6H4-COOH", "OC(=O)c1ccc(O)cc1");
+    reads_as("CH3-o-C6H4-CH3", "Cc1ccccc1C");
+    reads_as("HO-1,4-C6H4-OH", "Oc1ccc(O)cc1");
+    reads_as("CH3O-m-C6H4-CH2OH", "COc1cccc(CO)c1");
+    assert_eq!(
+        read("-p-C6H4-").top().unwrap().smiles,
+        canon("*c1ccc(*)cc1")
+    );
+    reads_as("-4-CH3OC6H4", "*c1ccc(OC)cc1");
+    assert_eq!(error_code("CH3-4-ClC6H4"), Code::UnexpectedToken);
+}
+
+#[test]
+fn locants_can_be_bracketed_after_the_ring() {
+    reads_as("-C6H4(4-OCH3)", "*c1ccc(OC)cc1");
+    reads_as("-C6H3(2-Cl)(4-F)", "*c1ccc(F)cc1Cl");
+    reads_as("-C6H4(p-CH3)", "*c1ccc(C)cc1");
+    reads_as("C6H4(4-OCH3)CH2OH", "COc1ccc(CO)cc1");
+    reads_as("HOCH2C6H4(4-OCH3)", "COc1ccc(CO)cc1");
+    reads_as("P(C6H4(4-F))3", "Fc1ccc(P(c2ccc(F)cc2)c2ccc(F)cc2)cc1");
+    assert_eq!(error_code("-C6H4(1-Cl)"), Code::LocantMismatch);
+}
+
+#[test]
+fn locants_can_number_a_substituted_phenyl() {
+    reads_as("4-ClPhCOOH", "OC(=O)c1ccc(Cl)cc1");
+    reads_as("(4-FPh)3P", "Fc1ccc(P(c2ccc(F)cc2)c2ccc(F)cc2)cc1");
+    reads_as("3,5-(CF3)2PhBr", "FC(F)(F)c1cc(Br)cc(C(F)(F)F)c1");
+    reads_as("p-CH3PhOH", "Cc1ccc(O)cc1");
+    reads_as("4-CH2PhC6H4OH", "Oc1ccc(Cc2ccccc2)cc1");
+    reads_as("C6H4(4-CH2Ph)Br", "Brc1ccc(Cc2ccccc2)cc1");
+    assert_eq!(error_code("1,4-Cl2Ph"), Code::LocantMismatch);
+}
+
+#[test]
+fn locants_can_be_spelled_out() {
+    reads_as("para-CH3C6H4OH", "Cc1ccc(O)cc1");
+    reads_as("ortho-C6H4(COOH)2", "OC(=O)c1ccccc1C(=O)O");
+    reads_as("-C6H4CH3-meta", "*c1cccc(C)c1");
+}
+
+#[test]
 fn locants_must_fit_their_ring() {
     for input in [
         "4-CH3OH",

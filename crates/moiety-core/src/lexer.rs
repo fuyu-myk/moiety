@@ -27,7 +27,7 @@ pub enum Locant {
     /// Numbered positions as a bit set, bit 0 for position 1. Zero marks a list
     /// with a position outside 1 to 6 or one position twice.
     Positions(u8),
-    /// `o-`, `m-` or `p-`: positions 1 and 2, 3 or 4.
+    /// `o-`, `m-` or `p-`, or spelled out: positions 1 and 2, 3 or 4.
     Relative(u8),
 }
 
@@ -383,18 +383,22 @@ fn trailing_locant(rest: &str) -> Option<(usize, Locant)> {
     ends.then_some((len + 1, value))
 }
 
-/// The length and value of the ring positions at the start of `rest`: `o`, `m`
-/// or `p`, or digits separated by commas.
+/// The length and value of the ring positions at the start of `rest`: `o`, `m`,
+/// `p`, `ortho`, `meta` or `para`, or digits separated by commas.
 fn positions(rest: &str) -> Option<(usize, Locant)> {
-    let bytes = rest.as_bytes();
-    if let Some(letter @ (b'o' | b'm' | b'p')) = bytes.first() {
-        let partner = match letter {
-            b'o' => 2,
-            b'm' => 3,
-            _ => 4,
-        };
-        return Some((1, Locant::Relative(partner)));
+    for (word, partner) in [
+        ("ortho", 2),
+        ("meta", 3),
+        ("para", 4),
+        ("o", 2),
+        ("m", 3),
+        ("p", 4),
+    ] {
+        if rest.starts_with(word) {
+            return Some((word.len(), Locant::Relative(partner)));
+        }
     }
+    let bytes = rest.as_bytes();
     let len = bytes
         .iter()
         .take_while(|b| b.is_ascii_digit() || **b == b',')

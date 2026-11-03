@@ -274,7 +274,7 @@ fn component(
     let mut trees = Vec::new();
     let mut syntax: Option<SyntaxError> = None;
     for path in &paths {
-        match parse(&lattice, path) {
+        match parse(&lattice, normalized.text(), path, dictionary) {
             Ok(parsed) => trees.extend(parsed),
             Err(error) => {
                 if syntax

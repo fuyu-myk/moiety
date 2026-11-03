@@ -1,9 +1,11 @@
 use crate::diagnostic::Code;
+use crate::dictionary::Dictionary;
 use crate::element::Element;
 use crate::lexer::{Bracket, Edge, EdgeKind, Lattice, MAX_CHARGE, MAX_COUNT};
 use crate::molecule::BondOrder;
 use crate::span::Span;
 
+mod after;
 mod arene;
 
 pub(crate) use arene::{Arene, Substituent};
@@ -100,16 +102,25 @@ impl Tree {
     }
 }
 
-/// Parses one lattice path into its parse trees.
+/// Parses one lattice path into its parse trees. `text` is the normalized
+/// formula the lattice spans index into. The dictionary and the text tell which
+/// spellings are phenyl, which locants can number (grammar, section 6.11).
 ///
 /// A path yields two trees when a count sits directly before a trailing sign,
 /// since the count may be the last unit's subscript or the charge magnitude.
-pub(crate) fn parse(lattice: &Lattice, path: &[usize]) -> Result<Vec<Tree>, SyntaxError> {
+pub(crate) fn parse(
+    lattice: &Lattice,
+    text: &str,
+    path: &[usize],
+    dictionary: &Dictionary,
+) -> Result<Vec<Tree>, SyntaxError> {
     let tokens: Vec<Edge> = path.iter().map(|&i| lattice.edges()[i]).collect();
     let mut parser = Parser {
         tokens: &tokens,
         pos: 0,
         warnings: Vec::new(),
+        text,
+        dictionary,
     };
     let tree = parser.component(lattice.span(), path)?;
     let mut trees = vec![tree.clone()];
@@ -139,6 +150,8 @@ struct Parser<'a> {
     tokens: &'a [Edge],
     pos: usize,
     warnings: Vec<(Code, Span)>,
+    text: &'a str,
+    dictionary: &'a Dictionary,
 }
 
 impl Parser<'_> {
@@ -173,7 +186,7 @@ impl Parser<'_> {
                 self.pos += 1;
             }
         }
-        let seq = self.seq(lead.is_none())?;
+        let seq = self.seq()?;
         if seq.items.is_empty() {
             return Err(match self.peek() {
                 Some(edge) => Self::unexpected(edge),
@@ -255,13 +268,11 @@ impl Parser<'_> {
         }
     }
 
-    /// Parses a unit sequence. `arene_allowed` is whether it may start with locants.
-    fn seq(&mut self, arene_allowed: bool) -> Result<Seq, SyntaxError> {
+    /// Parses a unit sequence, which may start with a ring numbered by locants.
+    fn seq(&mut self) -> Result<Seq, SyntaxError> {
         let mut items = Vec::new();
-        if arene_allowed {
-            if let Some(unit) = self.arene()? {
-                items.push(Item { bond: None, unit });
-            }
+        if let Some(unit) = self.arene()? {
+            items.push(Item { bond: None, unit });
         }
         loop {
             let start = self.pos;
@@ -275,14 +286,19 @@ impl Parser<'_> {
                 },
                 _ => None,
             };
-            let (unit, rest) = match self.numbered()? {
-                Some((unit, rest)) => (Some(unit), rest),
-                None => (self.unit()?, Vec::new()),
+            let (unit, rest) = if bond.is_some() && self.bare_locant_follows() {
+                (self.arene()?, Vec::new())
+            } else {
+                match self.numbered()? {
+                    Some((unit, rest)) => (Some(unit), rest),
+                    None => (self.unit()?, Vec::new()),
+                }
             };
             match unit {
                 Some(unit) => {
                     if let [Item { unit: first, .. }] = items.as_slice() {
-                        if matches!(&first.kind, UnitKind::Arene(arene) if arene.open.is_empty()) {
+                        if matches!(&first.kind, UnitKind::Arene(arene) if arene.open.is_empty() && !arene.after)
+                        {
                             return Err(arene::mismatch(
                                 first.span,
                                 "this ring has no open position for the units after it",
@@ -371,7 +387,7 @@ impl Parser<'_> {
             }
             _ => None,
         };
-        let seq = self.seq(true)?;
+        let seq = self.seq()?;
         match self.peek() {
             Some(edge) => match edge.kind {
                 EdgeKind::Close(closing) => {
@@ -405,15 +421,15 @@ impl Parser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dictionary::Dictionary;
     use crate::lexer::lex;
 
     fn trees(text: &str) -> Result<Vec<Tree>, SyntaxError> {
-        let lattice = lex(text, Span::new(0, text.len()), &Dictionary::default()).unwrap();
+        let dictionary = Dictionary::default();
+        let lattice = lex(text, Span::new(0, text.len()), &dictionary).unwrap();
         let (paths, _) = lattice.paths(64);
         let mut all = Vec::new();
         for path in paths {
-            all.extend(parse(&lattice, &path)?);
+            all.extend(parse(&lattice, text, &path, &dictionary)?);
         }
         Ok(all)
     }
