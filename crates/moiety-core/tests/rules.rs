@@ -26,6 +26,7 @@ fn dictionary() -> Dictionary {
         ("pyridine", "n1ccccc1"),
         ("thiophene", "s1cccc1"),
         ("naphthalene", "c1cccc2ccccc12"),
+        ("thienothiophene", "c1cc2sccc2s1"),
     ] {
         d.insert_ring(RingTemplate::new(name, smiles).unwrap())
             .unwrap();
@@ -383,6 +384,20 @@ fn templates_take_attachment_locants() {
     reads_as("-C10H7-2", "*c1ccc2ccccc2c1");
     reads_as("C5H4N-2-CH=NNH2", "NN=Cc1ccccn1");
     reads_as("2-Cl-1,4-C6H3(OH)2", "Oc1ccc(O)c(Cl)c1");
+}
+
+#[test]
+fn a_group_that_starts_with_a_bond_keeps_the_lowest_position_for_its_host() {
+    reads_as("CH3CH(-2,5-C5H3NOH)CH3", "CC(C)c1ccc(O)cn1");
+    reads_as("CH3CH(-1,2,4-C6H3(Cl)Br)CH3", "CC(C)c1ccc(Br)cc1Cl");
+    reads_as("CH3CH(-1,3,5-C6H3(OH)2)CH3", "CC(C)c1cc(O)cc(O)c1");
+    reads_as("CH3CH(5-Br-2-C5H3N)CH3", "CC(C)c1ccc(Br)cn1");
+}
+
+#[test]
+fn the_longest_ring_formula_wins() {
+    reads_as("2,5-(CH3)2C6H2S2", "Cc1csc2c(C)csc12");
+    reads_as("4-CH3OC6H4CHO", "COc1ccc(C=O)cc1");
 }
 
 #[test]

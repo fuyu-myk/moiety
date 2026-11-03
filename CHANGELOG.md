@@ -15,18 +15,19 @@ Grammar version 3, dictionary 1.4.0.
   - substituents after the ring: `C5H4N-2-CH=NNHPh`.
 - `[[ring]]` tables in dictionary files, with `RingTemplate`, `Dictionary::rings`, `Dictionary::insert_ring`, `MAX_POSITIONS`, and the errors `DictionaryError::BadRing` and `DictionaryError::DuplicateRing`.
 - Dictionary 1.4.0: templates for pyridine, thiophene, furan and naphthalene.
+- When two ring formulas match at one place, the longer is read, so a user template such as thienothiophene's `C6H2S2` wins over benzene's `C6H2`.
 - The writer writes template rings with locants: `4-C5H4NN(CH3)CH3`, `2,6-Br2C5H3N`, `CH3-2,6-C5H3NCH3`, `-(5-Br-2-C5H3N)`, `3-C4H3SCl`. Only a ring with no hydrogen left stays unwritable.
 
 ### Changed
 
 - The generated round-trip corpus grows one molecule in eight each from pyridine and from thiophene.
-
 - A locant directly before a benzene ring may follow its substituents, listing the positions they leave: `2-Cl-1,4-C6H3(OH)2` is 2-chlorohydroquinone.
 - Locants may list positions up to 8, which naphthalene needs.
 
 ### Fixed
 
 - The SMILES reader gave aromatic sulfur, and aromatic nitrogen with three bonds, an implicit hydrogen they do not have. Canonical SMILES text is unchanged.
+- A ring that opens a group starting with a bond now bonds to the group's host by its lowest listed position, as the grammar says. `CH3CH(-1,2,4-C6H3(Cl)Br)CH3` put the chlorine at 1 and the host at 4 before.
 
 ## 0.4.0 - 2026-11-02
 

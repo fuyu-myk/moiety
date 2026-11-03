@@ -41,10 +41,12 @@ pub(super) fn template_rings<'a>(
             map: Vec::new(),
             used: vec![false; molecule.atoms().len()],
             found: Vec::new(),
+            before: 0,
         };
         let order = matcher.order();
         for start in 0..molecule.atoms().len() {
             matcher.map = vec![None; template.parent().atoms().len()];
+            matcher.before = matcher.found.len();
             if matcher.fits(order[0], start) {
                 matcher.map[order[0]] = Some(start);
                 matcher.used[start] = true;
@@ -124,6 +126,8 @@ struct Matcher<'a> {
     map: Vec<Option<usize>>,
     used: Vec<bool>,
     found: Vec<Vec<usize>>,
+    /// How many numberings were found before the current start atom.
+    before: usize,
 }
 
 impl Matcher<'_> {
@@ -172,7 +176,7 @@ impl Matcher<'_> {
     }
 
     fn extend(&mut self, depth: usize, order: &[usize]) {
-        if self.found.len() >= NUMBERINGS * 8 {
+        if self.found.len() - self.before >= NUMBERINGS {
             return;
         }
         let Some(&atom) = order.get(depth) else {

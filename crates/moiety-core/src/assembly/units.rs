@@ -36,7 +36,7 @@ pub(crate) fn expand(state: &State, unit: &Unit, ctx: &mut Ctx<'_>) -> Vec<(Stat
             reversed,
             symbol,
         } => abbreviation(state, unit, *entry, *reversed, *symbol, ctx),
-        UnitKind::Group { bond, seq, .. } => interiors(seq, ctx)
+        UnitKind::Group { bond, seq, .. } => interiors(seq, bond.is_some(), ctx)
             .iter()
             .flat_map(|group| repeat_group(state, group, unit, *bond, ctx))
             .collect(),
@@ -45,11 +45,13 @@ pub(crate) fn expand(state: &State, unit: &Unit, ctx: &mut Ctx<'_>) -> Vec<(Stat
 }
 
 /// Assembles a group interior on its own, keeping the assemblies with the least
-/// free valence (grammar, section 6.2).
-fn interiors(seq: &Seq, ctx: &mut Ctx<'_>) -> Vec<State> {
+/// free valence (grammar, section 6.2). `anchored` is whether the group starts with a bond.
+fn interiors(seq: &Seq, anchored: bool, ctx: &mut Ctx<'_>) -> Vec<State> {
     let whole_allowed = std::mem::replace(&mut ctx.whole_allowed, false);
+    let outer = std::mem::replace(&mut ctx.anchored, anchored);
     let inner = assemble_seq(seq, ctx, State::default(), None);
     ctx.whole_allowed = whole_allowed;
+    ctx.anchored = outer;
     let mut resolved: Vec<State> = Vec::new();
     for s in inner {
         resolved.extend(finish_pending(s, ctx));
@@ -67,7 +69,8 @@ fn interiors(seq: &Seq, ctx: &mut Ctx<'_>) -> Vec<State> {
 
 /// Creates a ring numbered by locants from its template and bonds its substituents
 /// (grammar, sections 6.11 and 6.12). Its open positions join the host stack
-/// lowest on top.
+/// lowest on top, except that a ring opening a group that starts with a bond
+/// keeps its head at the bottom, for the group's host.
 fn numbered_ring(
     state: &State,
     unit: &Unit,
@@ -144,7 +147,7 @@ fn numbered_ring(
         if states.is_empty() {
             break;
         }
-        let groups = interiors(&substituent.seq, ctx);
+        let groups = interiors(&substituent.seq, false, ctx);
         let mut next = Vec::new();
         for s in &states {
             for group in &groups {
@@ -168,6 +171,10 @@ fn numbered_ring(
         .into_iter()
         .collect();
     push.extend(arene.open.iter().rev().map(|&p| site(p)));
+    if ctx.anchored && !state.started && state.pending.is_empty() {
+        push.retain(|&atom| atom != head);
+        push.insert(0, head);
+    }
     states
         .into_iter()
         .map(|s| {

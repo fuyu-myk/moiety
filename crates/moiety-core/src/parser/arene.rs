@@ -183,9 +183,10 @@ impl Parser<'_> {
 
 /// The ring at the start of `tokens`: benzene written `C6H4`, `C6H3`, `C6H2` or
 /// `C6H`, or a dictionary template written as its formula with one hydrogen or
-/// more left and at least one position substituted.
+/// more left and at least one position substituted. When several match, the
+/// longest formula wins, as `C6H2S2` over the `C6H2` of benzene.
 pub(super) fn ring_at(tokens: &[Edge], dictionary: &Dictionary) -> Option<RingAt> {
-    (0..dictionary.templates()).find_map(|template| {
+    let found = (0..dictionary.templates()).rev().filter_map(|template| {
         let parent = dictionary.template(template);
         let (span, hydrogens, taken) = formula_at(tokens, parent.formula())?;
         let most = if template == 0 {
@@ -203,7 +204,8 @@ pub(super) fn ring_at(tokens: &[Edge], dictionary: &Dictionary) -> Option<RingAt
                 },
                 taken,
             })
-    })
+    });
+    found.max_by_key(|at| at.taken)
 }
 
 /// The span, hydrogen count and token count of `formula` written in Hill order
@@ -416,12 +418,9 @@ pub(super) fn number(
     let listed = taken.count_ones() as usize;
     let open = match attachment {
         Some((span, locant, _)) => {
-            let Some(h) = ring.hydrogens else {
-                return Err(mismatch(
-                    span,
-                    "a phenyl spelling takes no attachment locant",
-                ));
-            };
+            let h = ring
+                .hydrogens
+                .expect("a phenyl spelling follows a substituent, never a bare locant");
             let open = positions(span, locant, total(h).saturating_sub(listed))?;
             take(&mut taken, span, &open)?;
             if listed == 0 && open.len() != total(h) {

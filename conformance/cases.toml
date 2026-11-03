@@ -1020,6 +1020,20 @@ expect = "unique"
 smiles = ["c1ccc(P(c2ccccc2)c2ccccn2)cc1"]
 
 [[case]]
+id = "template/group-starting-with-a-bond"
+corpus = "curated"
+input = "CH3CH(-2,5-C5H3NOH)CH3"
+expect = "unique"
+smiles = ["CC(C)c1ccc(O)cn1"]
+
+[[case]]
+id = "locant/group-starting-with-a-bond"
+corpus = "curated"
+input = "CH3CH(-1,2,4-C6H3(Cl)Br)CH3"
+expect = "unique"
+smiles = ["CC(C)c1ccc(Br)cc1Cl"]
+
+[[case]]
 id = "template/naphthyl-trailing-attachment"
 corpus = "curated"
 input = "-C10H7-1"

@@ -32,8 +32,9 @@ impl RingTemplate {
     ///
     /// Fails when the SMILES does not parse, has an attachment point, or is not one
     /// connected ring system with no bond outside its rings, when a numbered atom
-    /// holds more than one hydrogen, when no numbered atom holds one, when the
-    /// parent has no carbon, or when it numbers more than [`MAX_POSITIONS`] atoms.
+    /// holds more than one hydrogen, when an atom shared by two rings holds one,
+    /// when no numbered atom holds one, when the parent has no carbon, or when it
+    /// numbers more than [`MAX_POSITIONS`] atoms.
     pub fn new(name: &str, smiles: &str) -> Result<Self, DictionaryError> {
         let bad = |reason: &str| DictionaryError::BadRing {
             ring: name.to_string(),
@@ -67,6 +68,11 @@ impl RingTemplate {
             .any(|&atom| parent.atoms()[atom].hydrogens > 1)
         {
             return Err(bad("a numbered atom may hold at most one hydrogen"));
+        }
+        if (0..parent.atoms().len())
+            .any(|atom| adjacency[atom].len() != 2 && parent.atoms()[atom].hydrogens > 0)
+        {
+            return Err(bad("an atom shared by two rings may not hold a hydrogen"));
         }
         if positions
             .iter()
@@ -239,6 +245,7 @@ mod tests {
             "c1ccccc1-c1ccccc1",
             "C1CCCCC1",
             "n1nnnn1",
+            "C12C=CC(C=C1)C=C2",
         ] {
             assert!(
                 matches!(

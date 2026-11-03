@@ -122,6 +122,10 @@ fn writes_template_rings_with_locants() {
         "C(=NNc1ccccc1)c1ccccn1",
         "C[Si](C)(C)Cc1ccccn1",
         "Brc1cccc(Br)n1",
+        "CCCCCC(CCCCCC)c1ccc(O)cn1",
+        "CCCCCC(CCCCCC)c1c(O)ccc2ccccc12",
+        "OC(=O)c1ccc(o1)-c1ccc(cc1)[N+](=O)[O-]",
+        "Oc1ccc(Cl)cc1Cc1ccc(C)cn1",
     ] {
         round_trips(smiles);
     }

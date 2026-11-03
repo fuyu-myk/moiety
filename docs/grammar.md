@@ -111,7 +111,7 @@ template   = "C" , count , [ "H" , [ count ] ] , { element , [ count ] } ;
 locant     = ( position , { "," , position } | relative ) , "-" ;
 relative   = "o" | "m" | "p" | "ortho" | "meta" | "para" ;
 trailing-locant = "-" , ( position , { "," , position } | relative ) ;
-position   = "1" | "2" | "3" | "4" | "5" | "6" ;
+position   = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" ;
 trail      = charge | marker ;
 charge     = [ count ] , ( "+" | "-" )
            | "^" , [ count ] , ( "+" | "-" ) ;
@@ -271,9 +271,9 @@ A locant numbers the ring of its arene (section 4): a unit written `C6H4`, `C6H3
 
 **After the ring.** The positions left for later units are pushed on the host stack lowest on top, so the next unit bonds to the lowest one, and the host search steps back to the next once it is filled. A counted unit whose host is one of these positions puts one copy on each open position of that ring, lowest first, instead of all on one atom: `o-C6H4(CO2H)2` is phthalic acid and `o-C6H4Cl2` is 1,2-dichlorobenzene.
 
-**A locant in a chain.** A locant directly before its ring may also follow a bond inside a sequence, or a leading marker: `HO-p-C6H4-CO2H`, `CH3-o-C6H4-CH3`, `-p-C6H4-`. The ring bonds by its lowest listed position to the unit before it, and its other listed positions are left for the units after it. A ring with substituents before it may follow a leading marker too, which then takes position 1: `-4-MeOC6H4`.
+**A locant in a chain.** A locant directly before its ring may also follow a bond inside a sequence, or a leading marker: `HO-p-C6H4-CO2H`, `CH3-o-C6H4-CH3`, `-p-C6H4-`. The ring bonds by its lowest listed position to the unit before it, and its other listed positions are left for the units after it. A ring with substituents before it may follow a leading marker too, which then takes position 1: `-4-MeOC6H4`. A group that starts with a bond works the same way: in `CH3CH(-2,5-C5H3NOH)CH3` the ring bonds to the CH by position 2 and the hydroxy group takes position 5.
 
-**Substituted phenyl.** Before a dictionary spelling of phenyl, one whose fragment is `*c1ccccc1` and whose spelling states no hydrogen count, such as `Ph` but not `C6H5`, locants number a substituted phenyl ring as they number `C6H4`: `4-ClPh` is 4-chlorophenyl, `3,5-(CF3)2PhBr` is 1-bromo-3,5-bis(trifluoromethyl)benzene, and `(4-FPh)3P` is tris(4-fluorophenyl)phosphine. Position 1 is the phenyl's own attachment, so the locants must not list it, and the ring has one substituted position for each listed position and one for position 1. The phenyl is numbered only when no benzene ring such as `C6H4` comes later in the sequence; otherwise it is part of a substituent, as the benzyl group of `4-CH2PhC6H4OH` is.
+**Substituted phenyl.** Before a dictionary spelling of phenyl, one whose fragment is `*c1ccccc1` and whose spelling states no hydrogen count, such as `Ph` but not `C6H5`, locants number a substituted phenyl ring as they number `C6H4`: `4-ClPh` is 4-chlorophenyl, `3,5-(CF3)2PhBr` is 1-bromo-3,5-bis(trifluoromethyl)benzene, and `(4-FPh)3P` is tris(4-fluorophenyl)phosphine. Position 1 is the phenyl's own attachment, so the locants must not list it, and the ring has one substituted position for each listed position and one for position 1. The phenyl is numbered only when no numbered ring such as `C6H4`, or a template ring such as `C5H4N` (section 6.12), comes later in the sequence; otherwise it is part of a substituent, as the benzyl group of `4-CH2PhC6H4OH` is.
 
 **Locants after the ring.** A numbered ring (section 4) is written with its substituents after it, each as `-`, a locant and the substituent: `C6H4-4-OMe`, `C6H3-3,5-(CF3)2`, `C6H3-2-Cl-4-F`. Position 1 is then the ring's bond to what comes before it, either the host or, when the ring starts its group or component, the open valence that group or component leaves: `CH2C6H4-4-OMe`, `P(C6H4-4-OMe)3`, `-C6H4-4-OMe`. The locants must not list position 1, and with it they must number exactly the substituted positions. `o-`, `m-` and `p-` place a single substituent as before: `C6H4-p-OMe`. The units of the last substituent continue the sequence from its positions, so a charge or marker can follow them, as in `MeOC6H4-4-NH3+`. A substituent may itself be a numbered ring, which takes every substituent written after it: `-C6H4-4-C6H4-4-OMe` is 4'-methoxybiphenyl-4-yl.
 
@@ -286,7 +286,7 @@ Bonds to substituents written before their ring are backward under section 7.4. 
 **Errors.** CF0108 reports a locant that:
 
 - has no ring after it in its sequence, or, written after its substituent, none before it;
-- lists a position that is not a single digit from 1 to 6, or one position twice;
+- lists a position that is not a single digit from 1 to 8, one its ring does not number, or one position twice;
 - lists a different number of positions than its substituent has copies;
 - with the other locants of its ring, does not number exactly the substituted positions as above;
 - is `o-`, `m-` or `p-`, or spelled out, on a ring without exactly two substituted positions, or beside another locant;
@@ -297,7 +297,7 @@ Not covered: a charge or marker after a trailing locant, and bracketed and trail
 
 ### 6.12 Numbered template rings
 
-A **ring template** in the dictionary (section 9) defines a ring other than benzene, such as pyridine, thiophene, furan or naphthalene, with its numbering. A template ring is written as the template's formula with the hydrogens left after substitution, in Hill order: `C5H4N` is pyridine with one substituent, `C4H2S` thiophene with two, `C10H7` naphthalene with one. Its **substituted positions** are the numbered positions that hold a hydrogen in the parent ring and have lost it: one for `C5H4N`, two for `C5H3N`. Like benzene, a template ring is numbered only when a locant numbers it; `C5H4NCH2OH` stays underdetermined under section 6.6.
+A **ring template** in the dictionary (section 9) defines a ring other than benzene, such as pyridine, thiophene, furan or naphthalene, with its numbering. A template ring is written as the template's formula with the hydrogens left after substitution, in Hill order: `C5H4N` is pyridine with one substituent, `C4H2S` thiophene with two, `C10H7` naphthalene with one. Its **substituted positions** are the numbered positions that hold a hydrogen in the parent ring and have lost it: one for `C5H4N`, two for `C5H3N`. Like benzene, a template ring is numbered only when a locant numbers it; `C5H4NCH2OH` stays underdetermined under section 6.6. When the formulas of two rings both match at one place, the longer is read: with a thienothiophene template, `C6H2S2` is that ring, not benzene followed by sulfur.
 
 The rules of section 6.11 apply, with these differences:
 
@@ -423,7 +423,7 @@ name = "pyridine"
 smiles = "n1ccccc1"
 ```
 
-`smiles` is the parent ring system, aromatic and with no attachment points. Its ring atoms are numbered from 1 in SMILES order, skipping atoms shared by two rings, so `c1cccc2ccccc12` numbers naphthalene 1 to 8. A numbered atom may hold at most one hydrogen. The template's formula is the parent's in Hill order, written with the hydrogens left, so pyridine is written `C5H4N` to `C5HN`. Two templates may not share a formula, and benzene is built in. The bundled dictionary defines pyridine, thiophene, furan and naphthalene.
+`smiles` is the parent ring system, aromatic and with no attachment points. Its ring atoms are numbered from 1 in SMILES order, skipping atoms shared by two rings, so `c1cccc2ccccc12` numbers naphthalene 1 to 8. A numbered atom may hold at most one hydrogen, and an atom shared by two rings none. The template's formula is the parent's in Hill order, written with the hydrogens left, so pyridine is written `C5H4N` to `C5HN`. Two templates may not share a formula, and benzene is built in. The bundled dictionary defines pyridine, thiophene, furan and naphthalene.
 
 ## 10. Conformance
 

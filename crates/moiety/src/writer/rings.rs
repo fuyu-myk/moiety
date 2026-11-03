@@ -221,7 +221,10 @@ impl Writer<'_> {
         let mut text = String::new();
         self.chain(&path, Some(node), &mut text)?;
         let nested = self.substituent_has(node, root, |n| {
-            matches!(self.nodes[n], Node::Ring(_) | Node::Group(_))
+            matches!(
+                self.nodes[n],
+                Node::Ring(_) | Node::Group(_) | Node::Template(_)
+            )
         });
         Ok(if nested { format!("({text})") } else { text })
     }

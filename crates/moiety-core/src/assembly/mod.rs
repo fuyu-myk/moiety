@@ -86,6 +86,9 @@ pub(crate) struct Ctx<'a> {
     pub oversized: Option<Span>,
     pub single_atom: bool,
     pub whole_allowed: bool,
+    /// Whether the sequence being assembled is a group that starts with a bond,
+    /// whose first unit bonds to the group's host by its head.
+    pub anchored: bool,
     pub component_end: usize,
 }
 
@@ -106,6 +109,7 @@ impl<'a> Ctx<'a> {
             oversized: None,
             single_atom,
             whole_allowed: lone && tree.tail == Tail::None,
+            anchored: false,
             component_end: tree.span.end,
         }
     }
