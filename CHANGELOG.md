@@ -22,6 +22,9 @@ Grammar version 2, dictionary 1.3.0.
 
 ### Changed
 
+- The writer writes benzene rings the dictionary does not cover with locants: `CH3CH2C6H4-4-CHO`, `1,4-Cl2C6H4`, `-C6H3-3,5-(CF3)2`, `-1,4-C6H4-`, and `C6H6` for benzene. Fused and bridged rings and rings with no hydrogen left stay unwritable.
+- The writer reads each formula back before returning it. When leaving out a bond order would read as another molecule, it writes every multiple bond out, as `CH2CH=NH`, and when no formula reads back it returns the new `WriteError::Unreadable` instead of a wrong formula.
+- The generated round-trip corpus grows one molecule in four from a benzene ring.
 - The writer puts a `-` before a spelling that starts with a locant unless a locant could start there, as in `Ph-2-C5H4N`, and writes out repeated components that start with one instead of counting them.
 
 ### Fixed
