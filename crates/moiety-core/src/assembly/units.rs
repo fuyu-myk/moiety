@@ -1,9 +1,10 @@
-use super::state::{AAtom, State};
+use super::failure::bond_failure;
+use super::state::{AAtom, ABond, State};
 use super::{Ctx, Failure, assemble_seq, finish_pending};
 use crate::diagnostic::Code;
 use crate::element::Element;
-use crate::molecule::BondOrder;
-use crate::parser::{Unit, UnitKind};
+use crate::molecule::{AtomKind, BondOrder};
+use crate::parser::{Arene, Seq, Substituent, Unit, UnitKind};
 use crate::span::Span;
 
 const COMBINATION_LIMIT: usize = 256;
@@ -35,29 +36,180 @@ pub(crate) fn expand(state: &State, unit: &Unit, ctx: &mut Ctx<'_>) -> Vec<(Stat
             reversed,
             symbol,
         } => abbreviation(state, unit, *entry, *reversed, *symbol, ctx),
-        UnitKind::Group { bond, seq, .. } => {
-            let whole_allowed = std::mem::replace(&mut ctx.whole_allowed, false);
-            let inner = assemble_seq(seq, ctx, State::default(), None);
-            ctx.whole_allowed = whole_allowed;
-            let mut resolved: Vec<State> = Vec::new();
-            for s in inner {
-                resolved.extend(finish_pending(s, ctx));
+        UnitKind::Group { bond, seq, .. } => interiors(seq, ctx)
+            .iter()
+            .flat_map(|group| repeat_group(state, group, unit, *bond, ctx))
+            .collect(),
+        UnitKind::Arene(arene) => numbered_ring(state, unit, arene, ctx),
+    }
+}
+
+/// Assembles a group interior on its own, keeping the assemblies with the least
+/// free valence (grammar, section 6.2).
+fn interiors(seq: &Seq, ctx: &mut Ctx<'_>) -> Vec<State> {
+    let whole_allowed = std::mem::replace(&mut ctx.whole_allowed, false);
+    let inner = assemble_seq(seq, ctx, State::default(), None);
+    ctx.whole_allowed = whole_allowed;
+    let mut resolved: Vec<State> = Vec::new();
+    for s in inner {
+        resolved.extend(finish_pending(s, ctx));
+    }
+    let least = resolved
+        .iter()
+        .map(|s| s.live_free())
+        .filter(|&free| free > 0)
+        .min();
+    resolved
+        .into_iter()
+        .filter(|s| least.is_none_or(|least| s.live_free() == least))
+        .collect()
+}
+
+/// Creates a benzene ring numbered by locants and bonds the substituents written
+/// before it (grammar, section 6.11). Its open positions join the host stack lowest on top.
+fn numbered_ring(
+    state: &State,
+    unit: &Unit,
+    arene: &Arene,
+    ctx: &mut Ctx<'_>,
+) -> Vec<(State, Piece)> {
+    if state.would_pass_limit(6) {
+        ctx.oversized.get_or_insert(unit.span);
+        return Vec::new();
+    }
+    if !ctx.spend(6) {
+        ctx.exhausted = true;
+        return Vec::new();
+    }
+    let mut ring = state.clone();
+    let offset = ring.atoms.len();
+    let site = |position: u8| offset + usize::from(position - 1);
+    let substituted = |position: u8| {
+        (arene.after && position == 1)
+            || arene.open.contains(&position)
+            || arene
+                .substituents
+                .iter()
+                .any(|s| s.positions.contains(&position))
+    };
+    for position in 1..=6 {
+        let hydrogens = u8::from(!substituted(position));
+        ring.atoms.push(AAtom {
+            kind: AtomKind::Element(Element::C),
+            valence: 4,
+            used: 3 + hydrogens,
+            charge: 0,
+            aromatic: true,
+            hydrogens,
+            span: arene.ring,
+            group: arene.ring,
+            reversed_site: false,
+            budget_charge: false,
+            hydrogenated: false,
+            numbered: arene.open.contains(&position).then_some(offset),
+        });
+    }
+    for i in 0..6 {
+        ring.bonds.push(ABond {
+            a: offset + i,
+            b: offset + (i + 1) % 6,
+            order: BondOrder::Aromatic,
+            token: Some(arene.ring),
+        });
+    }
+    let mut states = vec![ring];
+    for substituent in &arene.substituents {
+        if states.is_empty() {
+            break;
+        }
+        let groups = interiors(&substituent.seq, ctx);
+        let mut next = Vec::new();
+        for s in &states {
+            for group in &groups {
+                next.extend(place(s, group, substituent, arene.after, site, ctx));
             }
-            let least = resolved
-                .iter()
-                .map(|s| s.live_free())
-                .filter(|&free| free > 0)
-                .min();
-            let inner: Vec<State> = resolved
-                .into_iter()
-                .filter(|s| least.is_none_or(|least| s.live_free() == least))
-                .collect();
-            inner
-                .iter()
-                .flat_map(|group| repeat_group(state, group, unit, *bond, ctx))
-                .collect()
+        }
+        if next.len() > COMBINATION_LIMIT {
+            ctx.truncated = true;
+            next.truncate(COMBINATION_LIMIT);
+        }
+        states = next;
+    }
+    let first = if arene.after {
+        Some(1)
+    } else {
+        arene.open.first().copied()
+    };
+    let head = first.map_or(offset, site);
+    let mut push: Vec<usize> = arene.after.then(|| site(1)).into_iter().collect();
+    push.extend(arene.open.iter().rev().map(|&p| site(p)));
+    states
+        .into_iter()
+        .map(|s| {
+            (
+                s,
+                Piece::Link {
+                    head,
+                    push: push.clone(),
+                    bond: None,
+                },
+            )
+        })
+        .collect()
+}
+
+/// Bonds one copy of a substituent interior to each of its ring positions.
+/// `after` is whether the substituent is written after the ring.
+fn place(
+    state: &State,
+    group: &State,
+    substituent: &Substituent,
+    after: bool,
+    site: impl Fn(u8) -> usize,
+    ctx: &mut Ctx<'_>,
+) -> Option<State> {
+    let Some(head) = group.atoms.iter().position(|a| a.free() > 0) else {
+        ctx.fail(Failure::new(
+            Code::GroupWithoutValence,
+            "this substituent has no free valence to bond with",
+            substituent.span,
+            "every atom inside is already saturated".into(),
+            substituent.span.start,
+        ));
+        return None;
+    };
+    let copies = substituent.positions.len();
+    let heavy = group
+        .atoms
+        .iter()
+        .filter(|a| a.element_kind() != Some(Element::H))
+        .count();
+    if state.would_pass_limit(copies.saturating_mul(heavy)) {
+        ctx.oversized.get_or_insert(substituent.span);
+        return None;
+    }
+    if !ctx.spend(copies.saturating_mul(group.atoms.len())) {
+        ctx.exhausted = true;
+        return None;
+    }
+    let explicit = substituent.bond;
+    let token = explicit.map_or(substituent.locant, |b| b.1);
+    let hydrogen = group.atoms[head].element_kind() == Some(Element::H);
+    let mut s = state.clone();
+    for &position in &substituent.positions {
+        let (ring, copy) = (site(position), embed(&mut s, group) + head);
+        let Some(&order) = s.orders(ring, copy, explicit.map(|b| b.0)).first() else {
+            ctx.fail(bond_failure(substituent.span, explicit.map(|b| b.1)));
+            return None;
+        };
+        s.link(ring, copy, order, Some(token));
+        match (hydrogen, after) {
+            (true, _) => {}
+            (false, true) => s.forward += 1,
+            (false, false) => s.backward += 1,
         }
     }
+    Some(s)
 }
 
 fn options(element: Element, charge_left: i32, single: bool) -> Vec<(i8, u8)> {
@@ -289,10 +441,11 @@ fn instantiate(
             reversed_site: reversed && attach > 0,
             budget_charge: false,
             hydrogenated: false,
+            numbered: None,
         });
     }
     for bond in fragment.bonds() {
-        state.bonds.push(super::state::ABond {
+        state.bonds.push(ABond {
             a: bond.a + offset,
             b: bond.b + offset,
             order: bond.order,
@@ -418,14 +571,15 @@ fn repeat_group(
 /// Appends a group interior to the state and returns the index offset of its atoms.
 fn embed(state: &mut State, group: &State) -> usize {
     let offset = state.atoms.len();
-    state.atoms.extend(group.atoms.iter().cloned());
-    state
-        .bonds
-        .extend(group.bonds.iter().map(|b| super::state::ABond {
-            a: b.a + offset,
-            b: b.b + offset,
-            ..b.clone()
-        }));
+    state.atoms.extend(group.atoms.iter().map(|atom| AAtom {
+        numbered: atom.numbered.map(|first| first + offset),
+        ..atom.clone()
+    }));
+    state.bonds.extend(group.bonds.iter().map(|b| ABond {
+        a: b.a + offset,
+        b: b.b + offset,
+        ..b.clone()
+    }));
     state.score += group.score;
     state.forks.extend(group.forks.iter().copied());
     state.forward += group.forward;

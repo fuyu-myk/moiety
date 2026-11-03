@@ -17,7 +17,7 @@
 [suite]
 name = "moiety-conformance"
 version = "0.3.0"
-grammar = 1
+grammar = 2
 ranking = 2
 
 # Chains and branches
@@ -386,6 +386,567 @@ input = "C$H4"
 expect = "invalid"
 code = "CF0101"
 span = [1, 2]
+
+# Benzene rings numbered by locants (grammar 2)
+
+[[case]]
+id = "locant/one-substituent"
+corpus = "curated"
+input = "4-MeOC6H4CHO"
+expect = "unique"
+smiles = ["COc1ccc(C=O)cc1"]
+
+[[case]]
+id = "locant/hyphenated"
+corpus = "curated"
+input = "4-MeO-C6H4-CHO"
+expect = "unique"
+smiles = ["COc1ccc(C=O)cc1"]
+
+[[case]]
+id = "locant/ortho"
+corpus = "curated"
+input = "o-ClC6H4CO2H"
+expect = "unique"
+smiles = ["OC(=O)c1ccccc1Cl"]
+
+[[case]]
+id = "locant/meta"
+corpus = "curated"
+input = "m-BrC6H4NH2"
+expect = "unique"
+smiles = ["Nc1cccc(Br)c1"]
+
+[[case]]
+id = "locant/para"
+corpus = "curated"
+input = "p-CH3C6H4OH"
+expect = "unique"
+smiles = ["Cc1ccc(O)cc1"]
+
+[[case]]
+id = "locant/two-copies"
+corpus = "curated"
+input = "2,4-Cl2C6H3CO2H"
+expect = "unique"
+smiles = ["OC(=O)c1ccc(Cl)cc1Cl"]
+
+[[case]]
+id = "locant/repeated-group"
+corpus = "curated"
+input = "3,4-(MeO)2C6H3CHO"
+expect = "unique"
+smiles = ["COc1ccc(C=O)cc1OC"]
+
+[[case]]
+id = "locant/three-copies"
+corpus = "curated"
+input = "2,4,6-Me3C6H2OH"
+expect = "unique"
+smiles = ["Cc1cc(C)c(O)c(C)c1"]
+
+[[case]]
+id = "locant/per-substituent"
+corpus = "curated"
+input = "2-Cl-4-FC6H3CHO"
+expect = "unique"
+smiles = ["O=Cc1ccc(F)cc1Cl"]
+
+[[case]]
+id = "locant/inside-group"
+corpus = "curated"
+input = "(4-ClC6H4)3P"
+expect = "unique"
+smiles = ["Clc1ccc(P(c2ccc(Cl)cc2)c2ccc(Cl)cc2)cc1"]
+
+[[case]]
+id = "locant/nested"
+corpus = "curated"
+input = "4-(4-ClC6H4)C6H4OH"
+expect = "unique"
+smiles = ["Oc1ccc(-c2ccc(Cl)cc2)cc1"]
+
+[[case]]
+id = "locant/every-position"
+corpus = "curated"
+input = "1,4-Cl2C6H4"
+expect = "unique"
+smiles = ["Clc1ccc(Cl)cc1"]
+
+[[case]]
+id = "locant/on-the-ring"
+corpus = "curated"
+input = "o-C6H4(CO2H)2"
+expect = "unique"
+smiles = ["OC(=O)c1ccccc1C(=O)O"]
+
+[[case]]
+id = "locant/on-the-ring-numbered"
+corpus = "curated"
+input = "1,3,5-C6H3(CO2H)3"
+expect = "unique"
+smiles = ["OC(=O)c1cc(C(=O)O)cc(C(=O)O)c1"]
+
+[[case]]
+id = "locant/after-descriptor"
+corpus = "curated"
+input = "(E)-4-MeOC6H4CH=CHCO2H"
+expect = "unique"
+smiles = ["COc1ccc(C=CC(=O)O)cc1"]
+warnings = ["CF0301"]
+
+[[case]]
+id = "locant/nitro-or-nitrite"
+corpus = "curated"
+input = "4-O2NC6H4OH"
+expect = "ambiguous"
+smiles = ["O=[N+]([O-])c1ccc(O)cc1", "O=NOc1ccc(O)cc1"]
+classes = ["branch-point-fork"]
+
+[[case]]
+id = "locant/no-ring"
+corpus = "adversarial"
+input = "4-MeOH"
+expect = "invalid"
+code = "CF0108"
+span = [0, 2]
+
+[[case]]
+id = "locant/out-of-range"
+corpus = "adversarial"
+input = "7-ClC6H4OH"
+expect = "invalid"
+code = "CF0108"
+span = [0, 2]
+
+[[case]]
+id = "locant/repeated-position"
+corpus = "adversarial"
+input = "2,2-Cl2C6H4"
+expect = "invalid"
+code = "CF0108"
+span = [0, 4]
+
+[[case]]
+id = "locant/copies-mismatch"
+corpus = "adversarial"
+input = "2,4-ClC6H3CO2H"
+expect = "invalid"
+code = "CF0108"
+span = [0, 4]
+
+[[case]]
+id = "locant/too-few-positions"
+corpus = "adversarial"
+input = "4-MeC6H3OH"
+expect = "invalid"
+code = "CF0108"
+span = [4, 8]
+
+[[case]]
+id = "locant/no-open-position"
+corpus = "adversarial"
+input = "1,4-Cl2C6H4OH"
+expect = "invalid"
+code = "CF0108"
+span = [0, 11]
+
+[[case]]
+id = "locant/dictionary-spelling-wins"
+corpus = "adversarial"
+input = "p-TolCH2C6H4OH"
+expect = "underdetermined"
+reason = "unknown-ring"
+span = [8, 12]
+
+[[case]]
+id = "locant/counted-atom-spreads"
+corpus = "curated"
+input = "o-C6H4Cl2"
+expect = "unique"
+smiles = ["Clc1ccccc1Cl"]
+
+[[case]]
+id = "locant/relative-on-c6h3"
+corpus = "adversarial"
+input = "m-Cl2C6H3OH"
+expect = "invalid"
+code = "CF0108"
+span = [0, 2]
+
+[[case]]
+id = "locant/bare-after-substituent"
+corpus = "adversarial"
+input = "2-Cl-1,4-C6H3(OH)2"
+expect = "invalid"
+code = "CF0108"
+span = [5, 9]
+
+[[case]]
+id = "locant/mid-chain"
+corpus = "adversarial"
+input = "CH3-4-ClC6H4OH"
+expect = "invalid"
+code = "CF0105"
+span = [4, 6]
+
+[[case]]
+id = "locant/after-the-ring"
+corpus = "curated"
+input = "-C6H4-4-OMe"
+expect = "unique"
+smiles = ["*c1ccc(OC)cc1"]
+
+[[case]]
+id = "locant/after-the-ring-in-a-group"
+corpus = "curated"
+input = "P(C6H4-4-OMe)3"
+expect = "unique"
+smiles = ["COc1ccc(P(c2ccc(OC)cc2)c2ccc(OC)cc2)cc1"]
+
+[[case]]
+id = "locant/after-the-ring-on-a-chain"
+corpus = "curated"
+input = "HOCH2C6H4-4-OMe"
+expect = "unique"
+smiles = ["OCc1ccc(OC)cc1"]
+
+[[case]]
+id = "locant/after-the-ring-two-copies"
+corpus = "curated"
+input = "-C6H3-3,5-(CF3)2"
+expect = "unique"
+smiles = ["*c1cc(C(F)(F)F)cc(C(F)(F)F)c1"]
+
+[[case]]
+id = "locant/after-the-ring-per-substituent"
+corpus = "curated"
+input = "(C6H3-2-Cl-4-F)CHO"
+expect = "unique"
+smiles = ["O=Cc1ccc(F)cc1Cl"]
+
+[[case]]
+id = "locant/after-the-ring-para"
+corpus = "curated"
+input = "CH3COC6H4-p-Br"
+expect = "unique"
+smiles = ["CC(=O)c1ccc(Br)cc1"]
+
+[[case]]
+id = "locant/after-the-ring-then-a-charge"
+corpus = "curated"
+input = "MeOC6H4-4-NH3+"
+expect = "unique"
+smiles = ["COc1ccc([NH3+])cc1"]
+
+[[case]]
+id = "locant/after-the-ring-nested"
+corpus = "curated"
+input = "-C6H4-4-C6H4-4-OMe"
+expect = "unique"
+smiles = ["*c1ccc(-c2ccc(OC)cc2)cc1"]
+
+[[case]]
+id = "locant/after-the-substituent"
+corpus = "curated"
+input = "-C6H4OMe-4"
+expect = "unique"
+smiles = ["*c1ccc(OC)cc1"]
+
+[[case]]
+id = "locant/after-the-substituent-in-a-group"
+corpus = "curated"
+input = "P(C6H4OMe-4)3"
+expect = "unique"
+smiles = ["COc1ccc(P(c2ccc(OC)cc2)c2ccc(OC)cc2)cc1"]
+
+[[case]]
+id = "locant/after-the-substituent-para"
+corpus = "curated"
+input = "-C6H4Me-p"
+expect = "unique"
+smiles = ["*c1ccc(C)cc1"]
+
+[[case]]
+id = "locant/after-the-substituent-two-copies"
+corpus = "curated"
+input = "-C6H3Me2-2,6"
+expect = "unique"
+smiles = ["*c1c(C)cccc1C"]
+
+[[case]]
+id = "locant/after-the-substituent-lists-position-one"
+corpus = "adversarial"
+input = "-C6H4Cl-1"
+expect = "invalid"
+code = "CF0108"
+span = [7, 9]
+
+[[case]]
+id = "locant/after-the-substituent-no-ring"
+corpus = "adversarial"
+input = "SO4-2"
+expect = "invalid"
+code = "CF0108"
+span = [3, 5]
+
+[[case]]
+id = "locant/several-after-their-substituents"
+corpus = "curated"
+input = "-C6H3Cl-2-F-4"
+expect = "unique"
+smiles = ["*c1ccc(F)cc1Cl"]
+
+[[case]]
+id = "locant/in-a-chain"
+corpus = "curated"
+input = "MeO-p-C6H4-CHO"
+expect = "unique"
+smiles = ["COc1ccc(C=O)cc1"]
+
+[[case]]
+id = "locant/in-a-chain-numbered"
+corpus = "curated"
+input = "HO-1,4-C6H4-OH"
+expect = "unique"
+smiles = ["Oc1ccc(O)cc1"]
+
+[[case]]
+id = "locant/after-a-leading-marker"
+corpus = "curated"
+input = "-4-MeOC6H4"
+expect = "unique"
+smiles = ["*c1ccc(OC)cc1"]
+
+[[case]]
+id = "locant/bracketed"
+corpus = "curated"
+input = "-C6H3(2-Cl)(4-F)"
+expect = "unique"
+smiles = ["*c1ccc(F)cc1Cl"]
+
+[[case]]
+id = "locant/bracketed-then-units"
+corpus = "curated"
+input = "C6H4(p-OMe)CH2OH"
+expect = "unique"
+smiles = ["COc1ccc(CO)cc1"]
+
+[[case]]
+id = "locant/bracketed-ring-is-a-group"
+corpus = "adversarial"
+input = "C6H4(4-ClC6H4)OH"
+expect = "underdetermined"
+reason = "unknown-ring"
+span = [0, 4]
+
+[[case]]
+id = "locant/substituted-phenyl"
+corpus = "curated"
+input = "4-ClPhCHO"
+expect = "unique"
+smiles = ["O=Cc1ccc(Cl)cc1"]
+
+[[case]]
+id = "locant/substituted-phenyl-in-a-group"
+corpus = "curated"
+input = "(4-MeOPh)3P"
+expect = "unique"
+smiles = ["COc1ccc(P(c2ccc(OC)cc2)c2ccc(OC)cc2)cc1"]
+
+[[case]]
+id = "locant/substituted-phenyl-lists-position-one"
+corpus = "adversarial"
+input = "1,4-Cl2Ph"
+expect = "invalid"
+code = "CF0108"
+span = [0, 4]
+
+[[case]]
+id = "locant/spelled-out"
+corpus = "curated"
+input = "para-MeC6H4OH"
+expect = "unique"
+smiles = ["Cc1ccc(O)cc1"]
+
+[[case]]
+id = "abbrev/pentafluorophenyl"
+corpus = "curated"
+input = "B(C6F5)3"
+expect = "unique"
+smiles = ["Fc1c(F)c(F)c(B(c2c(F)c(F)c(F)c(F)c2F)c2c(F)c(F)c(F)c(F)c2F)c(F)c1F"]
+
+[[case]]
+id = "abbrev/tbdps"
+corpus = "curated"
+input = "TBDPSOCH2CH2OH"
+expect = "unique"
+smiles = ["CC(C)(C)[Si](OCCO)(c1ccccc1)c1ccccc1"]
+
+[[case]]
+id = "abbrev/sem"
+corpus = "curated"
+input = "SEMCl"
+expect = "unique"
+smiles = ["C[Si](C)(C)CCOCCl"]
+
+[[case]]
+id = "abbrev/pinacolboronate"
+corpus = "curated"
+input = "PhBpin"
+expect = "unique"
+smiles = ["CC1(C)OB(c2ccccc2)OC1(C)C"]
+
+[[case]]
+id = "abbrev/adamantyl"
+corpus = "curated"
+input = "AdCOOH"
+expect = "unique"
+smiles = ["OC(=O)C12CC3CC(CC(C3)C1)C2"]
+
+[[case]]
+id = "abbrev/dipp"
+corpus = "curated"
+input = "DippNH2"
+expect = "unique"
+smiles = ["CC(C)c1cccc(C(C)C)c1N"]
+
+[[case]]
+id = "abbrev/pmp"
+corpus = "curated"
+input = "PMPNH2"
+expect = "unique"
+smiles = ["COc1ccc(N)cc1"]
+
+[[case]]
+id = "abbrev/alloc"
+corpus = "curated"
+input = "AllocNHCH2COOH"
+expect = "unique"
+smiles = ["C=CCOC(=O)NCC(=O)O"]
+
+[[case]]
+id = "abbrev/phthalimido"
+corpus = "curated"
+input = "NPhthCH2CH3"
+expect = "unique"
+smiles = ["CCN1C(=O)c2ccccc2C1=O"]
+
+[[case]]
+id = "locant/phenyl-in-a-substituent"
+corpus = "curated"
+input = "4-CH2PhC6H4OH"
+expect = "unique"
+smiles = ["Oc1ccc(Cc2ccccc2)cc1"]
+
+[[case]]
+id = "locant/phenyl-in-a-substituent-amine"
+corpus = "curated"
+input = "4-NHPhC6H4NH2"
+expect = "unique"
+smiles = ["Nc1ccc(Nc2ccccc2)cc1"]
+
+[[case]]
+id = "locant/phenyl-in-a-substituent-ketone"
+corpus = "curated"
+input = "4-COPhC6H4OMe"
+expect = "unique"
+smiles = ["COc1ccc(C(=O)c2ccccc2)cc1"]
+
+[[case]]
+id = "locant/phenyl-in-a-bracket"
+corpus = "curated"
+input = "C6H4(4-CH2Ph)Br"
+expect = "unique"
+smiles = ["Brc1ccc(Cc2ccccc2)cc1"]
+
+[[case]]
+id = "locant/phenyl-alone-in-a-bracket"
+corpus = "curated"
+input = "C6H4(4-Ph)Br"
+expect = "unique"
+smiles = ["Brc1ccc(-c2ccccc2)cc1"]
+
+[[case]]
+id = "locant/counted-phenyl-is-not-numbered"
+corpus = "adversarial"
+input = "4-ClC6H5Br"
+expect = "invalid"
+code = "CF0108"
+span = [0, 2]
+
+[[case]]
+id = "abbrev/2-adamantyl"
+corpus = "curated"
+input = "2-AdOH"
+expect = "unique"
+smiles = ["OC1C2CC3CC(C2)CC1C3"]
+
+[[case]]
+id = "locant/after-the-ring-lists-position-one"
+corpus = "adversarial"
+input = "-C6H4-1-OMe"
+expect = "invalid"
+code = "CF0108"
+span = [6, 8]
+
+[[case]]
+id = "abbrev/2-pyridyl"
+corpus = "curated"
+input = "2-C5H4NCH2OH"
+expect = "unique"
+smiles = ["OCc1ccccn1"]
+
+[[case]]
+id = "abbrev/3-pyridyl-short"
+corpus = "curated"
+input = "3-PyCHO"
+expect = "unique"
+smiles = ["O=Cc1cccnc1"]
+
+[[case]]
+id = "abbrev/2-thienyl"
+corpus = "curated"
+input = "CH3CO-2-C4H3S"
+expect = "unique"
+smiles = ["CC(=O)c1cccs1"]
+
+[[case]]
+id = "abbrev/2-furyl"
+corpus = "curated"
+input = "2-C4H3OCHO"
+expect = "unique"
+smiles = ["O=Cc1ccco1"]
+
+[[case]]
+id = "abbrev/1-naphthyl"
+corpus = "curated"
+input = "1-C10H7CH2OH"
+expect = "unique"
+smiles = ["OCc1cccc2ccccc12"]
+
+[[case]]
+id = "abbrev/heteroaryl-inside-group"
+corpus = "curated"
+input = "(2-C5H4N)3P"
+expect = "unique"
+smiles = ["c1ccc(P(c2ccccn2)c2ccccn2)nc1"]
+
+[[case]]
+id = "underdetermined/pyridyl-without-locant"
+corpus = "curated"
+input = "C5H4NCH2OH"
+expect = "underdetermined"
+reason = "unknown-ring"
+span = [0, 4]
+
+[[case]]
+id = "underdetermined/locant-spelling-after-a-count"
+corpus = "adversarial"
+input = "CH3(CH2)2-C5H4N"
+expect = "underdetermined"
+reason = "unknown-ring"
+span = [10, 14]
 
 # Generated in bulk below from hand-checked tables.
 
@@ -1917,12 +2478,11 @@ reason = "unknown-ring"
 span = [2, 6]
 
 [[case]]
-id = "underdetermined/fmoc"
+id = "abbrev/fmoc-glycine"
 corpus = "curated"
 input = "FmocNHCH2COOH"
-expect = "underdetermined"
-reason = "unknown-abbreviation"
-span = [0, 4]
+expect = "unique"
+smiles = ["OC(=O)CNC(=O)OCC1c2ccccc2-c2ccccc12"]
 
 [[case]]
 id = "invalid/argon-is-not-aryl"

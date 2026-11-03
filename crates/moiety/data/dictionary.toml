@@ -6,7 +6,7 @@
 
 [dictionary]
 name = "moiety-default"
-version = "1.2.0"
+version = "1.3.0"
 
 # Alkyl
 
@@ -70,6 +70,16 @@ name = "cyclohexyl"
 smiles = "*C1CCCCC1"
 spellings = ["Cy", "C6H11"]
 
+[[entry]]
+name = "1-adamantyl"
+smiles = "*C12CC3CC(CC(C3)C1)C2"
+spellings = ["Ad", "1-Ad"]
+
+[[entry]]
+name = "2-adamantyl"
+smiles = "*C1C2CC3CC(C2)CC1C3"
+spellings = ["2-Ad"]
+
 # Aryl and arylalkyl
 
 [[entry]]
@@ -91,6 +101,68 @@ spellings = ["Tol", "p-Tol"]
 name = "mesityl"
 smiles = "*c1c(C)cc(C)cc1C"
 spellings = ["Mes"]
+
+[[entry]]
+name = "2,6-diisopropylphenyl"
+smiles = "*c1c(C(C)C)cccc1C(C)C"
+spellings = ["Dipp"]
+
+[[entry]]
+name = "4-methoxyphenyl"
+smiles = "*c1ccc(OC)cc1"
+spellings = ["PMP"]
+
+[[entry]]
+name = "pentafluorophenyl"
+smiles = "*c1c(F)c(F)c(F)c(F)c1F"
+spellings = ["C6F5"]
+
+# Heteroaryl and naphthyl, attached at the position their locant names
+
+[[entry]]
+name = "2-pyridyl"
+smiles = "*c1ccccn1"
+spellings = ["2-C5H4N", "2-Py"]
+
+[[entry]]
+name = "3-pyridyl"
+smiles = "*c1cccnc1"
+spellings = ["3-C5H4N", "3-Py"]
+
+[[entry]]
+name = "4-pyridyl"
+smiles = "*c1ccncc1"
+spellings = ["4-C5H4N", "4-Py"]
+
+[[entry]]
+name = "2-thienyl"
+smiles = "*c1cccs1"
+spellings = ["2-C4H3S"]
+
+[[entry]]
+name = "3-thienyl"
+smiles = "*c1ccsc1"
+spellings = ["3-C4H3S"]
+
+[[entry]]
+name = "2-furyl"
+smiles = "*c1ccco1"
+spellings = ["2-C4H3O"]
+
+[[entry]]
+name = "3-furyl"
+smiles = "*c1ccoc1"
+spellings = ["3-C4H3O"]
+
+[[entry]]
+name = "1-naphthyl"
+smiles = "*c1cccc2ccccc12"
+spellings = ["1-C10H7", "1-Naph"]
+
+[[entry]]
+name = "2-naphthyl"
+smiles = "*c1ccc2ccccc2c1"
+spellings = ["2-C10H7", "2-Naph"]
 
 [[entry]]
 name = "benzyl"
@@ -153,6 +225,26 @@ smiles = "*C(=O)OCc1ccccc1"
 spellings = ["Cbz"]
 
 [[entry]]
+name = "fluorenylmethoxycarbonyl"
+smiles = "*C(=O)OCC1c2ccccc2-c2ccccc12"
+spellings = ["Fmoc"]
+
+[[entry]]
+name = "allyloxycarbonyl"
+smiles = "*C(=O)OCC=C"
+spellings = ["Alloc"]
+
+[[entry]]
+name = "2,2,2-trichloroethoxycarbonyl"
+smiles = "*C(=O)OCC(Cl)(Cl)Cl"
+spellings = ["Troc"]
+
+[[entry]]
+name = "2-(trimethylsilyl)ethoxycarbonyl"
+smiles = "*C(=O)OCC[Si](C)(C)C"
+spellings = ["Teoc"]
+
+[[entry]]
 name = "methoxymethyl"
 smiles = "*COC"
 spellings = ["MOM"]
@@ -181,6 +273,21 @@ spellings = ["TBS", "TBDMS"]
 name = "triisopropylsilyl"
 smiles = "*[Si](C(C)C)(C(C)C)C(C)C"
 spellings = ["TIPS"]
+
+[[entry]]
+name = "tert-butyldiphenylsilyl"
+smiles = "*[Si](c1ccccc1)(c1ccccc1)C(C)(C)C"
+spellings = ["TBDPS"]
+
+[[entry]]
+name = "2-(trimethylsilyl)ethoxymethyl"
+smiles = "*COCC[Si](C)(C)C"
+spellings = ["SEM"]
+
+[[entry]]
+name = "2-methoxyethoxymethyl"
+smiles = "*COCCOC"
+spellings = ["MEM"]
 
 # Heteroatom-linked groups
 
@@ -249,6 +356,23 @@ name = "tert-butoxycarbonylamino"
 smiles = "*NC(=O)OC(C)(C)C"
 spellings = ["NHBoc"]
 reversed = ["BocNH", "BocHN"]
+
+# Boryl and imido groups
+
+[[entry]]
+name = "pinacolatoboryl"
+smiles = "*B1OC(C)(C)C(C)(C)O1"
+spellings = ["Bpin"]
+
+[[entry]]
+name = "catecholatoboryl"
+smiles = "*B1Oc2ccccc2O1"
+spellings = ["Bcat"]
+
+[[entry]]
+name = "phthalimido"
+smiles = "*N1C(=O)c2ccccc2C1=O"
+spellings = ["NPhth"]
 
 # Functional groups
 

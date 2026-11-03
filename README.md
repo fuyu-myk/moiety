@@ -30,7 +30,7 @@ The language is specified in [docs/grammar.md](docs/grammar.md): normalization, 
 | --- | --- |
 | `moiety-core` | Normalization, lexer, parser, valence resolution, interpretation, SMILES reading and canonical writing. No dependencies. |
 | `moiety` | The bundled abbreviation dictionary and its TOML loader, the inverse writer, and the conformance runner. |
-| `moiety-draw` | Template layout for the v1 input language, SVG rendering, and an HTML page with bidirectional provenance highlighting. |
+| `moiety-draw` | Template layout for the input language, SVG rendering, and an HTML page with bidirectional provenance highlighting. |
 | `moiety-cli` | The `moiety` command. |
 | `moiety-wasm` | The WebAssembly module behind the browser playground. Not published. |
 
@@ -79,7 +79,7 @@ moiety dictionary             the abbreviation dictionary
 
 ## Drawing
 
-`moiety-draw` lays out the closed set of structures the v1 language can express (chains, branches, and the rings that come from the dictionary) with templates rather than a general layout engine: zig-zag chains, regular polygons for rings, straight lines through triple bonds and cumulated double bonds, and components side by side. Drawings follow skeletal conventions and use `currentColor`, so they take the colour of the page they sit in.
+`moiety-draw` lays out the closed set of structures the language can express (chains, branches, and the rings that come from the dictionary or from locants) with templates rather than a general layout engine: zig-zag chains, regular polygons for rings, straight lines through triple bonds and cumulated double bonds, and components side by side. Drawings follow skeletal conventions and use `currentColor`, so they take the colour of the page they sit in.
 
 ```text
 moiety draw 'BocNHCH2COOH' -o boc-glycine.svg
@@ -108,13 +108,13 @@ Current results (`moiety conformance`):
 
 | Metric | Result | v1.0 target |
 | --- | --- | --- |
-| Cases passed | 294 / 294 | |
-| False-unique rate | 0 / 27 | 0% |
-| Ambiguity class recall | 27 / 27 | at least 98% |
-| Top-1 accuracy, ambiguous cases | 27 / 27 | at least 85% |
-| Diagnostic span accuracy | 23 / 23 | at least 90% |
-| Round-trip recovery | 685 / 685 (185 curated, 500 generated) | at least 95% |
-| Ambiguity rate | 27 / 294 | reported |
+| Cases passed | 371 / 371 | |
+| False-unique rate | 0 / 28 | 0% |
+| Ambiguity class recall | 28 / 28 | at least 98% |
+| Top-1 accuracy, ambiguous cases | 28 / 28 | at least 85% |
+| Diagnostic span accuracy | 37 / 37 | at least 90% |
+| Round-trip recovery | 688 / 688 (201 curated, 500 generated) | at least 95% |
+| Ambiguity rate | 28 / 371 | reported |
 
 Differential testing against MolScribe's condensed-formula expander covers 246 substituent labels: 182 match exactly, every disagreement has a recorded verdict, and none is decided against moiety. See [conformance/differential](conformance/differential/README.md).
 

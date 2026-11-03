@@ -2,6 +2,35 @@
 
 Notable changes to the moiety crates. Versions follow [Semantic Versioning](https://semver.org/); before 1.0, a minor version can change how formulas are read. The grammar, the ranking policy, the bundled dictionary and the conformance suite carry their own versions, given where they change.
 
+## Unreleased
+
+Grammar version 2, dictionary 1.3.0.
+
+### Added
+
+- Locants that number benzene rings: a list before the ring as in `4-MeOC6H4CHO` and `2,4-Cl2C6H3CO2H`, one per substituent as in `2-Cl-4-FC6H3CHO`, `o-`, `m-` and `p-` as in `p-CH3C6H4OH`, locants on the ring itself as in `o-C6H4(CO2H)2`, locants after the ring as in `C6H4-4-OMe` and `P(C6H4-4-OMe)3`, locants after their substituents as in `C6H4OMe-4`, `C6H3Me2-2,6` and `C6H3Cl-2-F-4`, bracketed locants as in `C6H4(4-OMe)` and `C6H3(2-Cl)(4-F)`, and a bare locant in a chain as in `HO-p-C6H4-CO2H` and `-p-C6H4-`. `ortho-`, `meta-` and `para-` may be spelled out.
+  A counted unit after a numbered ring puts one copy on each open position. A ring with no locant is still underdetermined.
+- Locants before a phenyl spelling number a substituted phenyl: `4-ClPh`, `3,5-(CF3)2PhBr`, `(4-FPh)3P`.
+- CF0108 for locants that do not fit their ring.
+- `lexer::Locant`, `EdgeKind::Locant` and `EdgeKind::TrailingLocant`.
+- Dictionary spellings may start with a locant, as `2-C5H4N` does, and are matched only where a locant may start.
+- Dictionary 1.3.0:
+  - heteroaryl and naphthyl: 2-, 3- and 4-pyridyl (`2-C5H4N`, `2-Py`), 2- and 3-thienyl (`2-C4H3S`), 2- and 3-furyl (`2-C4H3O`), 1- and 2-naphthyl (`1-C10H7`, `1-Naph`);
+  - aryl and alkyl: pentafluorophenyl (`C6F5`), `PMP`, `Dipp`, 1- and 2-adamantyl (`Ad`, `2-Ad`);
+  - protecting groups: `Fmoc`, `Alloc`, `Troc`, `Teoc`, `TBDPS`, `SEM`, `MEM`;
+  - boryl and imido groups: `Bpin`, `Bcat`, `NPhth`.
+
+### Changed
+
+- The writer writes benzene rings the dictionary does not cover with locants: `CH3CH2C6H4-4-CHO`, `1,4-Cl2C6H4`, `-C6H3-3,5-(CF3)2`, `-1,4-C6H4-`, and `C6H6` for benzene. Fused and bridged rings and rings with no hydrogen left stay unwritable.
+- The writer reads each formula back before returning it. When leaving out a bond order would read as another molecule, it writes every multiple bond out, as `CH2CH=NH`, and when no formula reads back it returns the new `WriteError::Unreadable` instead of a wrong formula.
+- The generated round-trip corpus grows one molecule in four from a benzene ring.
+- The writer puts a `-` before a spelling that starts with a locant unless a locant could start there, as in `Ph-2-C5H4N`, and writes out repeated components that start with one instead of counting them.
+
+### Fixed
+
+- The writer counted repeated components that start with an attachment marker, writing `*C.*C` as `2-CH3`, which does not read back. They are now written out: `-CH3.-CH3`.
+
 ## 0.3.0 - 2026-11-02
 
 Dictionary 1.2.0, conformance suite 0.3.0.

@@ -1,11 +1,15 @@
 //! The inverse writer: condensed formulas from molecular graphs.
 //!
-//! Rings and charged groups are written with dictionary spellings, everything
-//! else atom by atom along the longest chain, with side chains in parentheses.
+//! Rings and charged groups are written with dictionary spellings, and benzene
+//! rings the dictionary does not cover with locants. Everything else is written
+//! atom by atom along the longest chain, with side chains in parentheses.
+
+mod rings;
 
 use std::collections::BTreeMap;
 
 use moiety_core::{AtomKind, BondOrder, Dictionary, Element, Entry, Molecule};
+use rings::{Ring, benzene_rings};
 
 /// A molecule the writer cannot express as a condensed formula.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -19,27 +23,65 @@ pub enum WriteError {
     /// The molecule has no atoms.
     #[error("the molecule is empty")]
     Empty,
+    /// No formula the writer can produce reads back as the molecule.
+    #[error("no condensed formula the writer can produce reads back as this molecule")]
+    Unreadable,
 }
 
-/// Writes `molecule` as a condensed formula that moiety reads back to the same molecule.
+/// Writes `molecule` as a condensed formula that moiety reads back to the same
+/// molecule, checking the formula by reading it.
+///
+/// Bond orders the reader can infer are left out, as in `CH3CHO`. When the
+/// formula would then read back as another molecule, every multiple bond is
+/// written out instead: a substituent `CH2CHNH` that could be read as an enamine
+/// is written `CH2CH=NH`.
 ///
 /// # Errors
 ///
-/// Fails for rings the dictionary does not cover and for attachment points that are
-/// not at the end of a chain.
+/// Fails for rings that neither a dictionary spelling nor locants can write, such
+/// as fused rings and rings with no hydrogen left, for attachment points that are
+/// not at the end of a chain, and for molecules that no formula the writer can
+/// produce reads back as.
 pub fn condense(molecule: &Molecule, dictionary: &Dictionary) -> Result<String, WriteError> {
     if molecule.is_empty() {
         return Err(WriteError::Empty);
     }
-    let groups = match_groups(molecule, dictionary)?;
+    let (groups, rings) = match_groups(molecule, dictionary)?;
+    let smiles = molecule.to_smiles();
+    let plain = write_components(molecule, &groups, &rings, false)?;
+    if reads_back(&plain, &smiles, dictionary) {
+        return Ok(plain);
+    }
+    let explicit = write_components(molecule, &groups, &rings, true)?;
+    if reads_back(&explicit, &smiles, dictionary) {
+        return Ok(explicit);
+    }
+    Err(WriteError::Unreadable)
+}
+
+/// Whether moiety reads `written` back at rank 1 as the molecule with canonical `smiles`.
+fn reads_back(written: &str, smiles: &str, dictionary: &Dictionary) -> bool {
+    moiety_core::interpret(written, dictionary, &moiety_core::Options::default())
+        .top()
+        .is_some_and(|reading| reading.smiles == smiles)
+}
+
+/// Writes every component, joining repeated ones under a count. `explicit` writes
+/// every multiple bond out.
+fn write_components(
+    molecule: &Molecule,
+    groups: &[Group],
+    rings: &[Ring],
+    explicit: bool,
+) -> Result<String, WriteError> {
     let mut parts: Vec<String> = Vec::new();
     for component in molecule.components() {
-        parts.push(Writer::new(molecule, &groups, &component).write()?);
+        parts.push(Writer::new(molecule, groups, rings, &component, explicit).write()?);
     }
     let mut merged: Vec<(usize, String)> = Vec::new();
     for part in parts {
         match merged.last_mut() {
-            Some((count, last)) if *last == part => *count += 1,
+            Some((count, last)) if *last == part && countable(&part) => *count += 1,
             _ => merged.push((1, part)),
         }
     }
@@ -63,7 +105,11 @@ struct Group {
     reversed: Option<String>,
 }
 
-fn match_groups(molecule: &Molecule, dictionary: &Dictionary) -> Result<Vec<Group>, WriteError> {
+/// Finds the dictionary groups in the molecule, then the benzene rings left over.
+fn match_groups(
+    molecule: &Molecule,
+    dictionary: &Dictionary,
+) -> Result<(Vec<Group>, Vec<Ring>), WriteError> {
     let adjacency = molecule.adjacency();
     let in_ring = ring_atoms(molecule, &adjacency);
     let mut entries: Vec<&Entry> = dictionary
@@ -92,9 +138,10 @@ fn match_groups(molecule: &Molecule, dictionary: &Dictionary) -> Result<Vec<Grou
             }
         }
     }
+    let rings = benzene_rings(molecule, &adjacency, &mut covered);
     match (0..molecule.atoms().len()).find(|&a| in_ring[a] && !covered[a]) {
         Some(atom) => Err(WriteError::UnknownRing(atom)),
-        None => Ok(groups),
+        None => Ok((groups, rings)),
     }
 }
 
@@ -244,23 +291,35 @@ fn ring_atoms(molecule: &Molecule, adjacency: &[Vec<(usize, usize)>]) -> Vec<boo
     in_ring
 }
 
-/// A node of the contracted tree: one atom, or one dictionary group.
+/// A node of the contracted tree: one atom, one dictionary group, or one
+/// benzene ring written with locants.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Node {
     Atom(usize),
     Group(usize),
+    Ring(usize),
 }
 
 struct Writer<'a> {
     molecule: &'a Molecule,
     groups: &'a [Group],
+    rings: &'a [Ring],
     nodes: Vec<Node>,
+    node_of: BTreeMap<usize, usize>,
     edges: Vec<Vec<(usize, BondOrder)>>,
     charge: i32,
+    /// Whether every multiple bond is written out.
+    explicit: bool,
 }
 
 impl<'a> Writer<'a> {
-    fn new(molecule: &'a Molecule, groups: &'a [Group], component: &[usize]) -> Self {
+    fn new(
+        molecule: &'a Molecule,
+        groups: &'a [Group],
+        rings: &'a [Ring],
+        component: &[usize],
+        explicit: bool,
+    ) -> Self {
         let mut node_of = BTreeMap::new();
         let mut nodes = Vec::new();
         for (g, group) in groups.iter().enumerate() {
@@ -269,6 +328,14 @@ impl<'a> Writer<'a> {
                     node_of.insert(atom, nodes.len());
                 }
                 nodes.push(Node::Group(g));
+            }
+        }
+        for (r, ring) in rings.iter().enumerate() {
+            if component.contains(&ring.atoms[0]) {
+                for &atom in &ring.atoms {
+                    node_of.insert(atom, nodes.len());
+                }
+                nodes.push(Node::Ring(r));
             }
         }
         for &atom in component {
@@ -291,23 +358,28 @@ impl<'a> Writer<'a> {
             .iter()
             .filter_map(|n| match n {
                 Node::Atom(a) => Some(i32::from(molecule.atoms()[*a].charge)),
-                Node::Group(_) => None,
+                Node::Group(_) | Node::Ring(_) => None,
             })
             .sum();
         Self {
             molecule,
             groups,
+            rings,
             nodes,
+            node_of,
             edges,
             charge,
+            explicit,
         }
+    }
+
+    fn is_attachment(&self, node: usize) -> bool {
+        matches!(self.nodes[node], Node::Atom(a) if self.molecule.atoms()[a].kind == AtomKind::Attachment)
     }
 
     fn attachments(&self) -> Vec<usize> {
         (0..self.nodes.len())
-            .filter(|&n| {
-                matches!(self.nodes[n], Node::Atom(a) if self.molecule.atoms()[a].kind == AtomKind::Attachment)
-            })
+            .filter(|&n| self.is_attachment(n))
             .collect()
     }
 
@@ -358,14 +430,15 @@ impl<'a> Writer<'a> {
                     atom.element(),
                     Some(Element::F | Element::CL | Element::BR | Element::I)
                 );
-                let oxo = matches!(atom.element(), Some(Element::O | Element::S))
+                let oxo = !self.explicit
+                    && matches!(atom.element(), Some(Element::O | Element::S))
                     && atom.hydrogens == 0
                     && self.edges[node]
                         .first()
                         .is_some_and(|e| e.1 == BondOrder::Double);
                 terminal && (halogen || oxo)
             }
-            Node::Group(_) => false,
+            Node::Group(_) | Node::Ring(_) => false,
         }
     }
 
@@ -443,7 +516,18 @@ impl<'a> Writer<'a> {
         for (i, &node) in path.iter().enumerate() {
             let previous = if i == 0 { parent } else { Some(path[i - 1]) };
             let next = path.get(i + 1).copied();
-            out.push_str(&self.label(node, previous.is_none() && i == 0, next.is_none()));
+            if let Node::Ring(_) = self.nodes[node] {
+                match previous {
+                    Some(previous) => return self.ring_after(node, previous, &path[i + 1..], out),
+                    None => self.ring_first(node, next, out)?,
+                }
+                self.bond_to_next(path, i, out);
+                continue;
+            }
+            push_label(
+                out,
+                &self.label(node, previous.is_none() && i == 0, next.is_none()),
+            );
             let mut inline: BTreeMap<String, usize> = BTreeMap::new();
             let mut branches: Vec<String> = Vec::new();
             for &(other, order) in &self.edges[node] {
@@ -470,19 +554,25 @@ impl<'a> Writer<'a> {
                 }
             }
             push_merged(out, branches);
-            if let Some(next) = next {
-                let order = self.edges[node]
-                    .iter()
-                    .find(|(other, _)| *other == next)
-                    .map(|(_, order)| *order)
-                    .expect("consecutive chain nodes are bonded");
-                let terminal = path.len() == i + 2 && self.edges[next].len() == 1;
-                if !(terminal && self.is_heteroatom(next)) {
-                    out.push_str(bond_text(order, false));
-                }
-            }
+            self.bond_to_next(path, i, out);
         }
         Ok(())
+    }
+
+    /// Writes the bond from `path[i]` to the next node of the path, if any.
+    fn bond_to_next(&self, path: &[usize], i: usize, out: &mut String) {
+        let (node, Some(&next)) = (path[i], path.get(i + 1)) else {
+            return;
+        };
+        let order = self.edges[node]
+            .iter()
+            .find(|(other, _)| *other == next)
+            .map(|(_, order)| *order)
+            .expect("consecutive chain nodes are bonded");
+        let terminal = path.len() == i + 2 && self.edges[next].len() == 1;
+        if self.explicit || !(terminal && self.is_heteroatom(next)) {
+            out.push_str(bond_text(order, false));
+        }
     }
 
     /// Whether `node` has side chains that must be written in parentheses.
@@ -502,6 +592,7 @@ impl<'a> Writer<'a> {
 
     fn label(&self, node: usize, first: bool, last: bool) -> String {
         match self.nodes[node] {
+            Node::Ring(_) => unreachable!("rings are written by ring_after and ring_first"),
             Node::Group(g) => {
                 let group = &self.groups[g];
                 match (&group.reversed, first && !last) {
@@ -527,6 +618,30 @@ impl<'a> Writer<'a> {
             }
         }
     }
+}
+
+/// Whether a label starts with a locant, as the spelling `2-C5H4N` does.
+fn starts_with_locant(text: &str) -> bool {
+    text.starts_with(|c: char| c.is_ascii_digit())
+}
+
+/// Whether a component reads correctly after a count: one that starts with a
+/// locant or an attachment marker does not.
+fn countable(part: &str) -> bool {
+    !starts_with_locant(part) && !part.starts_with(['-', '=', '#'])
+}
+
+/// Appends a label. A spelling that starts with a locant is read only where a
+/// locant may start (grammar, section 9), so it gets a `-` bond after anything else.
+fn push_label(out: &mut String, label: &str) {
+    let locant_may_start = out
+        .chars()
+        .last()
+        .is_none_or(|c| matches!(c, '(' | '[' | '-' | '=' | '#'));
+    if starts_with_locant(label) && !locant_may_start {
+        out.push('-');
+    }
+    out.push_str(label);
 }
 
 fn push_merged(out: &mut String, branches: Vec<String>) {
@@ -611,6 +726,9 @@ mod tests {
         assert_eq!(write("C=CC"), "CH2=CHCH3");
         assert_eq!(write("O.O.O"), "3H2O");
         assert_eq!(write("[Na+].[Cl-]"), "Na+.Cl-");
+        assert_eq!(write("c1ccc(-c2ccccn2)cc1"), "Ph-2-C5H4N");
+        assert_eq!(write("Cc1ccccn1.Cc1ccccn1"), "2-C5H4NCH3.2-C5H4NCH3");
+        assert_eq!(write("*C.*C"), "-CH3.-CH3");
     }
 
     #[test]
@@ -629,9 +747,90 @@ mod tests {
             "OCC(O)CO",
             "CC(C)CC(C)(C)C",
             "O=CCOC(C=O)=O",
+            "c1ccc(-c2ccccn2)cc1",
+            "OCc1cccnc1",
+            "CC(=O)c1cccs1",
+            "c1ccc2cc(C(F)(F)F)ccc2c1",
+            "Cc1ccccn1.Cc1ccccn1",
+            "*c1ccccn1.*c1ccccn1",
         ] {
             round_trips(smiles);
         }
+    }
+
+    #[test]
+    fn writes_benzene_rings_with_locants() {
+        assert_eq!(write("CCc1ccc(C=O)cc1"), "CH3CH2C6H4-4-CHO");
+        assert_eq!(write("Clc1ccc(Cl)cc1"), "1,4-Cl2C6H4");
+        assert_eq!(write("c1ccccc1"), "C6H6");
+        assert_eq!(write("*c1ccc(*)cc1"), "-1,4-C6H4-");
+        assert_eq!(write("*c1cc(C(F)(F)F)cc(C(F)(F)F)c1"), "-C6H3-3,5-(CF3)2");
+    }
+
+    #[test]
+    fn round_trips_substituted_benzene_rings() {
+        for smiles in [
+            "Cc1ccc(C=O)cc1",
+            "COc1ccc(C=O)cc1",
+            "OC(=O)c1ccc(Cl)cc1Cl",
+            "Clc1ccc(Cl)cc1",
+            "Clc1ccccc1Cl",
+            "Cc1cc(C)cc(C)c1",
+            "c1ccccc1",
+            "*c1ccc(*)cc1",
+            "*Cc1ccc(*)cc1",
+            "*c1ccc(OC)cc1",
+            "*c1cc(C(F)(F)F)cc(C(F)(F)F)c1",
+            "CC1(C)OB(c2ccc(Cl)cc2)OC1(C)C",
+            "Nc1ccc(N)cc1",
+            "Oc1ccc(-c2ccc(O)cc2)cc1",
+            "Fc1ccc(P(c2ccc(F)cc2)c2ccc(F)cc2)cc1",
+            "O=C(O)c1ccccc1C(=O)O",
+            "OC(=O)c1cc(Br)cc(C(=O)O)c1",
+            "C[N+](C)(C)c1ccc(OC)cc1",
+            "COc1ccc(CCN)cc1OC",
+            "Cc1cc(Cl)c(O)c(Cl)c1",
+            "CCOC(=O)c1ccc(N)cc1",
+            "O=[N+]([O-])c1ccc(Cl)cc1",
+            "Cc1cc(ccc1CC=N)N",
+            "Cc1cc(cc(c1SC=N)Cl)O",
+            "CC(=O)Oc1ccc(C)cc1C=C",
+            "CCC(CC(=O)Br)COC",
+        ] {
+            round_trips(smiles);
+        }
+    }
+
+    #[test]
+    fn writes_rings_between_attachment_points() {
+        assert_eq!(write("*c1ccc(-c2ccc(*)cc2)cc1"), "-1,4-C6H4-1,4-C6H4-");
+        round_trips("*c1ccc(C(=O)c2ccc(*)cc2)cc1");
+    }
+
+    #[test]
+    fn never_writes_a_formula_that_reads_back_differently() {
+        for smiles in [
+            "[O-]c1ccc(SC)cc1",
+            "[O-]c1ccc(Cl)cc1Cl",
+            "OC(=O)c1ccc([O-])cc1[O-]",
+            "*c1ccc(C*)cc1[NH3+]",
+            "*c1c(Cl)cc(*)cc1Cl",
+        ] {
+            let molecule = moiety_core::smiles::parse(smiles).unwrap();
+            if let Ok(written) = condense(&molecule, default_dictionary()) {
+                let top = interpret(&written).top().map(|r| r.smiles.clone());
+                assert_eq!(
+                    top,
+                    Some(molecule.to_smiles()),
+                    "{smiles} written as {written}"
+                );
+            }
+        }
+        let biphenylene = moiety_core::smiles::parse("Clc1ccc2-c3ccc(Cl)cc3-c2c1").unwrap();
+        assert!(matches!(
+            condense(&biphenylene, default_dictionary()),
+            Err(WriteError::UnknownRing(_))
+        ));
     }
 
     #[test]

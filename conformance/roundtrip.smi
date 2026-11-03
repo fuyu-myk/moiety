@@ -1,4 +1,4 @@
-# Round-trip corpus: well-known molecules within the v1 input language.
+# Round-trip corpus: well-known molecules within the input language.
 # Each line is a SMILES string followed by a name. The runner writes each
 # molecule as a condensed formula with the inverse writer, reads it back,
 # and compares canonical SMILES of the rank 1 reading.
@@ -205,3 +205,21 @@ CC(C)(C)OC(=O)NCC(=O)O boc-glycine
 C[Si](C)(C)OCCO trimethylsilyloxyethanol
 CC(C)(C)[Si](C)(C)OC tbs-methyl-ether
 OCC1CC1 cyclopropylmethanol
+
+# Substituted benzene rings, written with locants
+COc1ccc(C=O)cc1 anisaldehyde
+CCc1ccc(C=O)cc1 4-ethylbenzaldehyde
+Clc1ccc(Cl)cc1 1,4-dichlorobenzene
+Clc1ccccc1Cl 1,2-dichlorobenzene
+Cc1cc(C)cc(C)c1 mesitylene
+Nc1ccc(N)cc1 p-phenylenediamine
+O=C(O)c1ccccc1C(=O)O phthalic-acid
+O=C(O)c1ccc(C(=O)O)cc1 terephthalic-acid
+OC(=O)c1ccc(Cl)cc1Cl 2,4-dichlorobenzoic-acid
+CCOC(=O)c1ccc(N)cc1 benzocaine
+COc1ccc(CCN)cc1OC homoveratrylamine
+Oc1ccc(-c2ccc(O)cc2)cc1 4,4-biphenol
+Fc1ccc(P(c2ccc(F)cc2)c2ccc(F)cc2)cc1 tris-4-fluorophenylphosphine
+CC1(C)OB(c2ccc(Cl)cc2)OC1(C)C 4-chlorophenylboronic-pinacol-ester
+O=[N+]([O-])c1ccc(O)cc1 4-nitrophenol
+c1ccccc1 benzene

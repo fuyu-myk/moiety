@@ -241,6 +241,147 @@ fn readings_are_limited_in_size() {
 }
 
 #[test]
+fn locants_number_benzene_rings() {
+    reads_as("4-CH3OC6H4CHO", "COc1ccc(C=O)cc1");
+    reads_as("4-CH3O-C6H4-CHO", "COc1ccc(C=O)cc1");
+    reads_as("p-CH3C6H4OH", "Cc1ccc(O)cc1");
+    reads_as("o-CH3C6H4OH", "Cc1ccccc1O");
+    reads_as("m-CH3C6H4OH", "Cc1cccc(O)c1");
+    reads_as("2,4-Cl2C6H3COOH", "OC(=O)c1ccc(Cl)cc1Cl");
+    reads_as("3,5-(CF3)2C6H3Br", "FC(F)(F)c1cc(Br)cc(C(F)(F)F)c1");
+    reads_as("2-Cl-4-FC6H3CHO", "O=Cc1ccc(F)cc1Cl");
+    reads_as("(4-ClC6H4)3P", "Clc1ccc(P(c2ccc(Cl)cc2)c2ccc(Cl)cc2)cc1");
+    reads_as("4-(4-ClC6H4)C6H4OH", "Oc1ccc(-c2ccc(Cl)cc2)cc1");
+}
+
+#[test]
+fn locants_can_fill_every_position() {
+    reads_as("1,4-Cl2C6H4", "Clc1ccc(Cl)cc1");
+    reads_as("p-Cl2C6H4", "Clc1ccc(Cl)cc1");
+    reads_as("1,3,5-(CH3)3C6H3", "Cc1cc(C)cc(C)c1");
+    reads_as("o-C6H4(COOH)2", "OC(=O)c1ccccc1C(=O)O");
+    reads_as("1,4-C6H4(OH)2", "Oc1ccc(O)cc1");
+    reads_as("1,3,5-C6H3(COOH)3", "OC(=O)c1cc(C(=O)O)cc(C(=O)O)c1");
+    reads_as("p-C6H4(CH3)OH", "Cc1ccc(O)cc1");
+    reads_as("o-C6H4Cl2", "Clc1ccccc1Cl");
+}
+
+#[test]
+fn locants_can_follow_the_ring() {
+    reads_as("-C6H4-4-OCH3", "*c1ccc(OC)cc1");
+    reads_as("P(C6H4-4-OCH3)3", "COc1ccc(P(c2ccc(OC)cc2)c2ccc(OC)cc2)cc1");
+    reads_as("HOCH2C6H4-4-OCH3", "OCc1ccc(OC)cc1");
+    reads_as("-C6H3-3,5-(CF3)2", "*c1cc(C(F)(F)F)cc(C(F)(F)F)c1");
+    reads_as("(C6H3-2-Cl-4-F)CHO", "O=Cc1ccc(F)cc1Cl");
+    reads_as("CH3COC6H4-p-Br", "CC(=O)c1ccc(Br)cc1");
+    reads_as("4-CH3OC6H4C6H4-4-F", "COc1ccc(-c2ccc(F)cc2)cc1");
+    reads_as("CH3OC6H4-4-NH3+", "COc1ccc([NH3+])cc1");
+    reads_as("-C6H4-4-C6H4-4-OCH3", "*c1ccc(-c2ccc(OC)cc2)cc1");
+    assert_eq!(error_code("-C6H4-1-OCH3"), Code::LocantMismatch);
+    assert_eq!(error_code("-C6H3-4-OCH3"), Code::LocantMismatch);
+}
+
+#[test]
+fn locants_can_follow_their_substituent() {
+    reads_as("-C6H4OCH3-4", "*c1ccc(OC)cc1");
+    reads_as("P(C6H4OCH3-4)3", "COc1ccc(P(c2ccc(OC)cc2)c2ccc(OC)cc2)cc1");
+    reads_as("-C6H4CH3-p", "*c1ccc(C)cc1");
+    reads_as("-C6H3(CH3)2-2,6", "*c1c(C)cccc1C");
+    reads_as("-C6H3Cl2-3,5", "*c1cc(Cl)cc(Cl)c1");
+    reads_as("HOCH2C6H4Cl-4", "OCc1ccc(Cl)cc1");
+    reads_as("(C6H4CF3-4)2O", "FC(F)(F)c1ccc(Oc2ccc(C(F)(F)F)cc2)cc1");
+    for input in [
+        "-C6H4Cl-1",
+        "-C6H3Cl-4",
+        "-C6H4Cl2-4",
+        "CH3OCH3-4",
+        "-C6H4-4",
+        "P(C6H5OCH3-4)3",
+        "(4-ClC6H4OCH3-4)2O",
+        "C6H4-2-2",
+    ] {
+        assert_eq!(error_code(input), Code::LocantMismatch, "{input}");
+    }
+    reads_as("-C6H4-OCH3-4", "*c1ccc(OC)cc1");
+}
+
+#[test]
+fn several_substituents_can_end_with_their_locants() {
+    reads_as("-C6H3Cl-2-F-4", "*c1ccc(F)cc1Cl");
+    reads_as("(C6H3Cl-2-F-4)COOH", "OC(=O)c1ccc(F)cc1Cl");
+    reads_as("-C6H2Cl2-2,6-CH3-4", "*c1c(Cl)cc(C)cc1Cl");
+    assert_eq!(error_code("-C6H3Cl-2-F-2"), Code::LocantMismatch);
+}
+
+#[test]
+fn a_bare_locant_can_number_a_ring_in_a_chain() {
+    reads_as("HO-p-C6H4-COOH", "OC(=O)c1ccc(O)cc1");
+    reads_as("CH3-o-C6H4-CH3", "Cc1ccccc1C");
+    reads_as("HO-1,4-C6H4-OH", "Oc1ccc(O)cc1");
+    reads_as("CH3O-m-C6H4-CH2OH", "COc1cccc(CO)c1");
+    assert_eq!(
+        read("-p-C6H4-").top().unwrap().smiles,
+        canon("*c1ccc(*)cc1")
+    );
+    reads_as("-4-CH3OC6H4", "*c1ccc(OC)cc1");
+    assert_eq!(error_code("CH3-4-ClC6H4"), Code::UnexpectedToken);
+}
+
+#[test]
+fn locants_can_be_bracketed_after_the_ring() {
+    reads_as("-C6H4(4-OCH3)", "*c1ccc(OC)cc1");
+    reads_as("-C6H3(2-Cl)(4-F)", "*c1ccc(F)cc1Cl");
+    reads_as("-C6H4(p-CH3)", "*c1ccc(C)cc1");
+    reads_as("C6H4(4-OCH3)CH2OH", "COc1ccc(CO)cc1");
+    reads_as("HOCH2C6H4(4-OCH3)", "COc1ccc(CO)cc1");
+    reads_as("P(C6H4(4-F))3", "Fc1ccc(P(c2ccc(F)cc2)c2ccc(F)cc2)cc1");
+    assert_eq!(error_code("-C6H4(1-Cl)"), Code::LocantMismatch);
+}
+
+#[test]
+fn locants_can_number_a_substituted_phenyl() {
+    reads_as("4-ClPhCOOH", "OC(=O)c1ccc(Cl)cc1");
+    reads_as("(4-FPh)3P", "Fc1ccc(P(c2ccc(F)cc2)c2ccc(F)cc2)cc1");
+    reads_as("3,5-(CF3)2PhBr", "FC(F)(F)c1cc(Br)cc(C(F)(F)F)c1");
+    reads_as("p-CH3PhOH", "Cc1ccc(O)cc1");
+    reads_as("4-CH2PhC6H4OH", "Oc1ccc(Cc2ccccc2)cc1");
+    reads_as("C6H4(4-CH2Ph)Br", "Brc1ccc(Cc2ccccc2)cc1");
+    assert_eq!(error_code("1,4-Cl2Ph"), Code::LocantMismatch);
+}
+
+#[test]
+fn locants_can_be_spelled_out() {
+    reads_as("para-CH3C6H4OH", "Cc1ccc(O)cc1");
+    reads_as("ortho-C6H4(COOH)2", "OC(=O)c1ccccc1C(=O)O");
+    reads_as("-C6H4CH3-meta", "*c1cccc(C)c1");
+}
+
+#[test]
+fn locants_must_fit_their_ring() {
+    for input in [
+        "4-CH3OH",
+        "7-ClC6H4OH",
+        "2,2-Cl2C6H3OH",
+        "2,4-ClC6H3COOH",
+        "4-CH3C6H3OH",
+        "1,2-Cl2C6H3OH",
+        "m-Cl2C6H3OH",
+        "p-Cl-2-FC6H3OH",
+        "2-Cl-1,4-C6H3(OH)2",
+        "1,2,4-C6H4(OH)2",
+        "1,4-Cl2C6H4OH",
+        "02-ClC6H4OH",
+    ] {
+        assert_eq!(error_code(input), Code::LocantMismatch, "{input}");
+    }
+    let reason = match read("CH3C6H4CH3") {
+        Interpretation::Underdetermined { reason, .. } => reason,
+        other => panic!("expected underdetermined, got {}", other.kind()),
+    };
+    assert_eq!(reason, Underdetermination::UnknownRing);
+}
+
+#[test]
 fn pathological_inputs_stop_at_the_search_limit() {
     let quick = Options {
         suggestions: false,

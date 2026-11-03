@@ -19,6 +19,9 @@ pub(crate) struct AAtom {
     pub reversed_site: bool,
     pub budget_charge: bool,
     pub hydrogenated: bool,
+    /// For an open position of a ring numbered by locants, the index of the
+    /// ring's first atom, which tells the positions of one ring from another's.
+    pub numbered: Option<usize>,
 }
 
 impl AAtom {
@@ -35,6 +38,7 @@ impl AAtom {
             reversed_site: false,
             budget_charge: false,
             hydrogenated: false,
+            numbered: None,
         }
     }
 
@@ -216,6 +220,27 @@ impl State {
             .filter(|a| a.element_kind() != Some(Element::H))
             .count();
         heavy.saturating_add(atoms) > MAX_ATOMS
+    }
+
+    /// The open positions of the numbered ring that `host` belongs to, lowest first,
+    /// when it has `n` of them and `host` alone has too little room for `n` pendants.
+    pub fn numbered_hosts(&self, host: usize, n: usize) -> Option<Vec<usize>> {
+        let atom = &self.atoms[host];
+        if atom.numbered.is_none() || usize::from(atom.free()) >= n {
+            return None;
+        }
+        let open: Vec<usize> = self
+            .stack
+            .iter()
+            .rev()
+            .copied()
+            .filter(|&i| {
+                let site = &self.atoms[i];
+                site.numbered == atom.numbered && site.free() > 0
+            })
+            .take(n)
+            .collect();
+        (open.len() == n).then_some(open)
     }
 
     /// Total free valence of atoms later units can still reach.

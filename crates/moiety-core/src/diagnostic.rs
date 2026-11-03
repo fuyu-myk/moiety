@@ -36,6 +36,8 @@ pub enum Code {
     EmptyGroup,
     /// CF0107: count of zero or above the limit.
     CountOutOfRange,
+    /// CF0108: locants that do not fit their benzene ring.
+    LocantMismatch,
     /// CF0201: a bond the two atoms cannot form.
     BondNotPossible,
     /// CF0202: valence left open at the end of a component.
@@ -76,6 +78,7 @@ impl Code {
             Code::UnexpectedToken => "CF0105",
             Code::EmptyGroup => "CF0106",
             Code::CountOutOfRange => "CF0107",
+            Code::LocantMismatch => "CF0108",
             Code::BondNotPossible => "CF0201",
             Code::OpenValence => "CF0202",
             Code::NoAnchor => "CF0203",
@@ -109,7 +112,7 @@ impl Code {
     }
 }
 
-const ALL_CODES: [Code; 22] = [
+const ALL_CODES: [Code; 23] = [
     Code::Empty,
     Code::TooLong,
     Code::TooComplex,
@@ -121,6 +124,7 @@ const ALL_CODES: [Code; 22] = [
     Code::UnexpectedToken,
     Code::EmptyGroup,
     Code::CountOutOfRange,
+    Code::LocantMismatch,
     Code::BondNotPossible,
     Code::OpenValence,
     Code::NoAnchor,

@@ -1,8 +1,14 @@
 use crate::diagnostic::Code;
+use crate::dictionary::Dictionary;
 use crate::element::Element;
 use crate::lexer::{Bracket, Edge, EdgeKind, Lattice, MAX_CHARGE, MAX_COUNT};
 use crate::molecule::BondOrder;
 use crate::span::Span;
+
+mod after;
+mod arene;
+
+pub(crate) use arene::{Arene, Substituent};
 
 /// One parse tree of a component, built from one path through its lattice.
 #[derive(Clone, Debug)]
@@ -57,6 +63,7 @@ pub(crate) enum UnitKind {
         bond: Option<(BondOrder, Span)>,
         seq: Seq,
     },
+    Arene(Arene),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -95,16 +102,25 @@ impl Tree {
     }
 }
 
-/// Parses one lattice path into its parse trees.
+/// Parses one lattice path into its parse trees. `text` is the normalized
+/// formula the lattice spans index into. The dictionary and the text tell which
+/// spellings are phenyl, which locants can number (grammar, section 6.11).
 ///
 /// A path yields two trees when a count sits directly before a trailing sign,
 /// since the count may be the last unit's subscript or the charge magnitude.
-pub(crate) fn parse(lattice: &Lattice, path: &[usize]) -> Result<Vec<Tree>, SyntaxError> {
+pub(crate) fn parse(
+    lattice: &Lattice,
+    text: &str,
+    path: &[usize],
+    dictionary: &Dictionary,
+) -> Result<Vec<Tree>, SyntaxError> {
     let tokens: Vec<Edge> = path.iter().map(|&i| lattice.edges()[i]).collect();
     let mut parser = Parser {
         tokens: &tokens,
         pos: 0,
         warnings: Vec::new(),
+        text,
+        dictionary,
     };
     let tree = parser.component(lattice.span(), path)?;
     let mut trees = vec![tree.clone()];
@@ -134,6 +150,8 @@ struct Parser<'a> {
     tokens: &'a [Edge],
     pos: usize,
     warnings: Vec<(Code, Span)>,
+    text: &'a str,
+    dictionary: &'a Dictionary,
 }
 
 impl Parser<'_> {
@@ -221,11 +239,18 @@ impl Parser<'_> {
     }
 
     fn unexpected(edge: Edge) -> SyntaxError {
+        if let EdgeKind::TrailingLocant(_) = edge.kind {
+            return arene::mismatch(
+                edge.span,
+                "this locant has no unnumbered benzene ring before it",
+            );
+        }
         let what = match edge.kind {
             EdgeKind::Count(_) => "a count must follow an atom, abbreviation or group",
             EdgeKind::Bond(_) | EdgeKind::Marker(_) => "a bond must sit between two units",
             EdgeKind::Sign(_) | EdgeKind::Charge(_) => "a charge must end its component",
             EdgeKind::Descriptor => "a descriptor must start its component",
+            EdgeKind::Locant(_) => "a locant must start its component, a group or a substituent",
             _ => "unexpected token",
         };
         Self::error(Code::UnexpectedToken, edge.span, what)
@@ -243,8 +268,12 @@ impl Parser<'_> {
         }
     }
 
+    /// Parses a unit sequence, which may start with a ring numbered by locants.
     fn seq(&mut self) -> Result<Seq, SyntaxError> {
         let mut items = Vec::new();
+        if let Some(unit) = self.arene()? {
+            items.push(Item { bond: None, unit });
+        }
         loop {
             let start = self.pos;
             let bond = match self.peek() {
@@ -257,12 +286,40 @@ impl Parser<'_> {
                 },
                 _ => None,
             };
-            match self.unit()? {
-                Some(unit) => items.push(Item { bond, unit }),
+            let (unit, rest) = if bond.is_some() && self.bare_locant_follows() {
+                (self.arene()?, Vec::new())
+            } else {
+                match self.numbered()? {
+                    Some((unit, rest)) => (Some(unit), rest),
+                    None => (self.unit()?, Vec::new()),
+                }
+            };
+            match unit {
+                Some(unit) => {
+                    if let [Item { unit: first, .. }] = items.as_slice() {
+                        if matches!(&first.kind, UnitKind::Arene(arene) if arene.open.is_empty() && !arene.after)
+                        {
+                            return Err(arene::mismatch(
+                                first.span,
+                                "this ring has no open position for the units after it",
+                            ));
+                        }
+                    }
+                    items.push(Item { bond, unit });
+                    items.extend(rest);
+                }
                 None => {
                     if bond.is_some() {
-                        self.pos = start;
-                        return Err(Self::unexpected(self.tokens[start]));
+                        let blamed = match self.peek() {
+                            Some(
+                                edge @ Edge {
+                                    kind: EdgeKind::Locant(_),
+                                    ..
+                                },
+                            ) => edge,
+                            _ => self.tokens[start],
+                        };
+                        return Err(Self::unexpected(blamed));
                     }
                     return Ok(Seq { items });
                 }
@@ -348,6 +405,7 @@ impl Parser<'_> {
                     self.pos += 1;
                     Ok(UnitKind::Group { bond, seq })
                 }
+                EdgeKind::TrailingLocant(_) => Err(Self::unexpected(edge)),
                 _ if seq.items.is_empty() => Err(Self::unexpected(edge)),
                 _ => Err(Self::unclosed(open)),
             },
@@ -363,15 +421,15 @@ impl Parser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dictionary::Dictionary;
     use crate::lexer::lex;
 
     fn trees(text: &str) -> Result<Vec<Tree>, SyntaxError> {
-        let lattice = lex(text, Span::new(0, text.len()), &Dictionary::default()).unwrap();
+        let dictionary = Dictionary::default();
+        let lattice = lex(text, Span::new(0, text.len()), &dictionary).unwrap();
         let (paths, _) = lattice.paths(64);
         let mut all = Vec::new();
         for path in paths {
-            all.extend(parse(&lattice, &path)?);
+            all.extend(parse(&lattice, text, &path, &dictionary)?);
         }
         Ok(all)
     }
@@ -413,6 +471,39 @@ mod tests {
             Code::CountOutOfRange
         );
         assert_eq!(trees("CH3-=CH3").unwrap_err().code, Code::UnexpectedToken);
+        let error = trees("CH3-4-ClC6H4").unwrap_err();
+        assert_eq!(
+            (error.code, error.span),
+            (Code::UnexpectedToken, Span::new(4, 6))
+        );
+    }
+
+    #[test]
+    fn numbers_benzene_rings() {
+        let all = trees("2-Cl-4-FC6H3CHO").unwrap();
+        let UnitKind::Arene(arene) = &all[0].seq.items[0].unit.kind else {
+            panic!("expected a numbered ring");
+        };
+        let positions: Vec<&[u8]> = arene
+            .substituents
+            .iter()
+            .map(|s| s.positions.as_slice())
+            .collect();
+        assert_eq!(positions, [&[2][..], &[4][..]]);
+        assert_eq!(arene.open, [1]);
+        assert_eq!(arene.ring, Span::new(8, 12));
+        assert_eq!(all[0].seq.items.len(), 4);
+        let all = trees("o-C6H4(OH)2").unwrap();
+        let UnitKind::Arene(arene) = &all[0].seq.items[0].unit.kind else {
+            panic!("expected a numbered ring");
+        };
+        assert!(arene.substituents.is_empty());
+        assert_eq!(arene.open, [1, 2]);
+        let error = trees("2,4-ClC6H3OH").unwrap_err();
+        assert_eq!(
+            (error.code, error.span),
+            (Code::LocantMismatch, Span::new(0, 4))
+        );
     }
 
     #[test]
