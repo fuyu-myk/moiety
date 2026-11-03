@@ -216,7 +216,7 @@ impl Writer<'_> {
 
     /// A substituent of `node` rooted at `root`, bracketed when it holds a ring or
     /// a dictionary group, which could otherwise be read as the ring numbered.
-    fn substituent(&self, node: usize, root: usize) -> Result<String, WriteError> {
+    pub(super) fn substituent(&self, node: usize, root: usize) -> Result<String, WriteError> {
         let path = self.longest_from(root, Some(node));
         let mut text = String::new();
         self.chain(&path, Some(node), &mut text)?;
@@ -230,7 +230,7 @@ impl Writer<'_> {
     /// uncharged ones written once and counted, ordered by their first position
     /// except that one with a charged atom comes last, where the written charge
     /// can reach it.
-    fn chunks(
+    pub(super) fn chunks(
         &self,
         node: usize,
         entries: &[(u8, usize)],

@@ -15,8 +15,11 @@ Grammar version 3, dictionary 1.4.0.
   - substituents after the ring: `C5H4N-2-CH=NNHPh`.
 - `[[ring]]` tables in dictionary files, with `RingTemplate`, `Dictionary::rings`, `Dictionary::insert_ring`, `MAX_POSITIONS`, and the errors `DictionaryError::BadRing` and `DictionaryError::DuplicateRing`.
 - Dictionary 1.4.0: templates for pyridine, thiophene, furan and naphthalene.
+- The writer writes template rings with locants: `4-C5H4NN(CH3)CH3`, `2,6-Br2C5H3N`, `CH3-2,6-C5H3NCH3`, `-(5-Br-2-C5H3N)`, `3-C4H3SCl`. Only a ring with no hydrogen left stays unwritable.
 
 ### Changed
+
+- The generated round-trip corpus grows one molecule in eight each from pyridine and from thiophene.
 
 - A locant directly before a benzene ring may follow its substituents, listing the positions they leave: `2-Cl-1,4-C6H3(OH)2` is 2-chlorohydroquinone.
 - Locants may list positions up to 8, which naphthalene needs.
