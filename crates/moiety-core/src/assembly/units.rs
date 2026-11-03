@@ -85,7 +85,8 @@ fn numbered_ring(
     let offset = ring.atoms.len();
     let site = |position: u8| offset + usize::from(position - 1);
     let substituted = |position: u8| {
-        arene.open.contains(&position)
+        (arene.after && position == 1)
+            || arene.open.contains(&position)
             || arene
                 .substituents
                 .iter()
@@ -125,7 +126,7 @@ fn numbered_ring(
         let mut next = Vec::new();
         for s in &states {
             for group in &groups {
-                next.extend(place(s, group, substituent, site, ctx));
+                next.extend(place(s, group, substituent, arene.after, site, ctx));
             }
         }
         if next.len() > COMBINATION_LIMIT {
@@ -134,8 +135,14 @@ fn numbered_ring(
         }
         states = next;
     }
-    let head = arene.open.first().map_or(offset, |&p| site(p));
-    let push: Vec<usize> = arene.open.iter().rev().map(|&p| site(p)).collect();
+    let first = if arene.after {
+        Some(1)
+    } else {
+        arene.open.first().copied()
+    };
+    let head = first.map_or(offset, site);
+    let mut push: Vec<usize> = arene.after.then(|| site(1)).into_iter().collect();
+    push.extend(arene.open.iter().rev().map(|&p| site(p)));
     states
         .into_iter()
         .map(|s| {
@@ -152,10 +159,12 @@ fn numbered_ring(
 }
 
 /// Bonds one copy of a substituent interior to each of its ring positions.
+/// `after` is whether the substituent is written after the ring.
 fn place(
     state: &State,
     group: &State,
     substituent: &Substituent,
+    after: bool,
     site: impl Fn(u8) -> usize,
     ctx: &mut Ctx<'_>,
 ) -> Option<State> {
@@ -194,8 +203,10 @@ fn place(
             return None;
         };
         s.link(ring, copy, order, Some(token));
-        if !hydrogen {
-            s.backward += 1;
+        match (hydrogen, after) {
+            (true, _) => {}
+            (false, true) => s.forward += 1,
+            (false, false) => s.backward += 1,
         }
     }
     Some(s)

@@ -6,7 +6,7 @@
 
 [dictionary]
 name = "moiety-default"
-version = "1.2.0"
+version = "1.3.0"
 
 # Alkyl
 
@@ -92,6 +92,53 @@ name = "mesityl"
 smiles = "*c1c(C)cc(C)cc1C"
 spellings = ["Mes"]
 
+# Heteroaryl and naphthyl, attached at the position their locant names
+
+[[entry]]
+name = "2-pyridyl"
+smiles = "*c1ccccn1"
+spellings = ["2-C5H4N", "2-Py"]
+
+[[entry]]
+name = "3-pyridyl"
+smiles = "*c1cccnc1"
+spellings = ["3-C5H4N", "3-Py"]
+
+[[entry]]
+name = "4-pyridyl"
+smiles = "*c1ccncc1"
+spellings = ["4-C5H4N", "4-Py"]
+
+[[entry]]
+name = "2-thienyl"
+smiles = "*c1cccs1"
+spellings = ["2-C4H3S"]
+
+[[entry]]
+name = "3-thienyl"
+smiles = "*c1ccsc1"
+spellings = ["3-C4H3S"]
+
+[[entry]]
+name = "2-furyl"
+smiles = "*c1ccco1"
+spellings = ["2-C4H3O"]
+
+[[entry]]
+name = "3-furyl"
+smiles = "*c1ccoc1"
+spellings = ["3-C4H3O"]
+
+[[entry]]
+name = "1-naphthyl"
+smiles = "*c1cccc2ccccc12"
+spellings = ["1-C10H7", "1-Naph"]
+
+[[entry]]
+name = "2-naphthyl"
+smiles = "*c1ccc2ccccc2c1"
+spellings = ["2-C10H7", "2-Naph"]
+
 [[entry]]
 name = "benzyl"
 smiles = "*Cc1ccccc1"
@@ -151,6 +198,11 @@ reversed = ["tBuO2C", "t-BuO2C"]
 name = "benzyloxycarbonyl"
 smiles = "*C(=O)OCc1ccccc1"
 spellings = ["Cbz"]
+
+[[entry]]
+name = "fluorenylmethoxycarbonyl"
+smiles = "*C(=O)OCC1c2ccccc2-c2ccccc12"
+spellings = ["Fmoc"]
 
 [[entry]]
 name = "methoxymethyl"

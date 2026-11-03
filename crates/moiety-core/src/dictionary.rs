@@ -35,7 +35,8 @@ impl Entry {
     ///
     /// Fails when the SMILES does not parse, an attachment point does not have exactly
     /// one neighbour, there are more than two attachment points, no spelling is given,
-    /// or a spelling uses characters other than ASCII letters, digits and `-`.
+    /// or a spelling uses characters other than ASCII letters, digits and `-`, or
+    /// starts with neither a letter nor a locant such as the `2-` of `2-C5H4N`.
     pub fn new(
         name: &str,
         smiles: &str,
@@ -113,8 +114,13 @@ impl Entry {
 }
 
 fn valid_spelling(spelling: &str) -> bool {
-    !spelling.is_empty()
-        && spelling.starts_with(|c: char| c.is_ascii_alphabetic())
+    let digits = spelling.bytes().take_while(u8::is_ascii_digit).count();
+    let word = match digits {
+        0 => Some(spelling),
+        1 | 2 if !spelling.starts_with('0') => spelling[digits..].strip_prefix('-'),
+        _ => None,
+    };
+    word.is_some_and(|word| word.starts_with(|c: char| c.is_ascii_alphabetic()))
         && spelling
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-')
@@ -368,10 +374,16 @@ mod tests {
             bad("*C", vec![]),
             Err(DictionaryError::NoSpellings { .. })
         ));
-        assert!(matches!(
-            bad("*C", vec!["X Y".into()]),
-            Err(DictionaryError::BadSpelling { .. })
-        ));
+        for spelling in ["X Y", "2C5H4N", "2-", "-C5H4N", "2-4C", "0-Py", "123-Py"] {
+            assert!(
+                matches!(
+                    bad("*C", vec![spelling.into()]),
+                    Err(DictionaryError::BadSpelling { .. })
+                ),
+                "{spelling}"
+            );
+        }
+        assert!(bad("*c1ccccn1", vec!["2-C5H4N".into()]).is_ok());
         assert!(matches!(
             bad("*C(*)(*)", vec!["X".into()]),
             Err(DictionaryError::BadAttachment { .. })

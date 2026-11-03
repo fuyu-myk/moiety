@@ -203,13 +203,17 @@ pub fn lex(text: &str, span: Span, dictionary: &Dictionary) -> Result<Lattice, U
                 edges.push(edge(at(len), EdgeKind::Descriptor));
             }
         }
-        let spellings = dictionary.matches_at(component, pos);
         let locant_allowed = first
             || descriptor == Some(pos)
             || matches!(
                 component.as_bytes()[pos - 1],
                 b'(' | b'[' | b'-' | b'=' | b'#'
             );
+        let spellings = if c.is_ascii_digit() && !locant_allowed {
+            Vec::new()
+        } else {
+            dictionary.matches_at(component, pos)
+        };
         let numbered = match locant_allowed.then(|| locant(rest)).flatten() {
             Some((len, value)) if spellings.iter().all(|s| s.len <= len) => {
                 edges.push(edge(at(len), EdgeKind::Locant(value)));
@@ -535,6 +539,7 @@ mod tests {
         add(&mut d, "tosyl", "*S(=O)(=O)c1ccc(C)cc1", &["Ts"]);
         add(&mut d, "tert-butyl", "*C(C)(C)C", &["t-Bu"]);
         add(&mut d, "p-tolyl", "*c1ccc(C)cc1", &["p-Tol"]);
+        add(&mut d, "2-pyridyl", "*c1ccccn1", &["2-C5H4N"]);
         d
     }
 
@@ -641,6 +646,20 @@ mod tests {
             kinds("02-ClC6H4OH")[0],
             EdgeKind::Locant(Locant::Positions(0))
         );
+    }
+
+    #[test]
+    fn matches_locant_spellings_only_where_a_locant_may_start() {
+        let pyridyl = |text: &str| {
+            lattice(text)
+                .edges()
+                .iter()
+                .any(|e| matches!(e.kind, EdgeKind::Abbreviation { .. }))
+        };
+        assert!(pyridyl("2-C5H4NCH3"));
+        assert!(pyridyl("CH3-2-C5H4N"));
+        assert!(pyridyl("(2-C5H4N)3P"));
+        assert!(!pyridyl("CH3(CH2)2-C5H4N"));
     }
 
     #[test]

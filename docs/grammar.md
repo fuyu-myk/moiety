@@ -52,7 +52,7 @@ The input is split into components at `.` first. Each component is lexed into a 
 | Element | An uppercase letter optionally followed by a lowercase letter, matching an element symbol exactly | `C`, `Cl`, `Co`, `Si` |
 | Folded element | Two uppercase letters `XY` where `Xy` is an element symbol | `CO` for `Co`, `CL` for `Cl`, `NO` for `No`. Lower prior. |
 | Isotope hydrogen | `D` or `T` | Read as hydrogen, warning CF0302 |
-| Abbreviation | Any spelling in the loaded dictionary, case-exact | May span digits, letters and hyphens: `CO2Et`, `t-Bu`, `C6H5` |
+| Abbreviation | Any spelling in the loaded dictionary, case-exact | May span digits, letters and hyphens: `CO2Et`, `t-Bu`, `C6H5`, `2-C5H4N`. A spelling that starts with a digit matches only where a locant may start |
 | Count | A maximal run of digits | Subscript, multiplier or charge magnitude; the grammar decides |
 | Open, close | `(` `[` and `)` `]` | Brackets are parenthesis synonyms |
 | Bond | `-` `=` `#` between two units | |
@@ -67,7 +67,7 @@ A trailing `-` emits both a Marker edge and a Charge edge. Every other character
 
 When no complete path exists, the lexer reports the first position that no edge can leave:
 
-- If the uncovered text is an uppercase letter followed by lowercase letters, such as `Xy` or `Fmoc` without a dictionary entry, the interpretation is `Underdetermined` with reason `UnknownAbbreviation`.
+- If the uncovered text is an uppercase letter followed by lowercase letters, such as `Xy` or `Alloc` without a dictionary entry, the interpretation is `Underdetermined` with reason `UnknownAbbreviation`.
 - Otherwise the interpretation is `Invalid` with CF0101.
 
 ### 3.3 Lattice priors
@@ -88,11 +88,13 @@ Every edge carries an integer prior. Priors only order readings that survive val
 ```
 formula    = component , { "." , component } ;
 component  = [ descriptor ] , [ count ] , [ marker ] , unit-seq , [ trail ] ;
-unit-seq   = ( arene | unit ) , { [ bond ] , unit } ;
+unit-seq   = ( arene | unit ) , { [ bond ] , unit } , [ [ bond ] , numbered ]
+           | numbered ;
 unit       = ( atom | abbreviation | group ) , [ count ] ;
 group      = open , [ bond ] , unit-seq , close ;
 arene      = substituent , { "-" , substituent } , [ bond ] , ring
            | locant , ring ;
+numbered   = ring , "-" , substituent , { "-" , substituent } ;
 substituent = locant , unit , { [ bond ] , unit } ;
 ring       = "C6H" , [ "2" | "3" | "4" ] ;
 locant     = position , { "," , position } , "-"
@@ -108,7 +110,7 @@ close      = ")" | "]" ;
 count      = digit , { digit } ;
 ```
 
-An arene starts the sequence of a group, or of a component with no leading marker. A component count cannot come before an arene, since its digits would run into the locant's. Each substituent ends at a `-` followed by a locant, or at the ring: the first carbon with count 6 directly followed by hydrogen with a count of 4 or less. Units after the ring, including later `C6H4`s, are read as usual.
+An arene starts the sequence of a group, or of a component with no leading marker. A component count cannot come before an arene, since its digits would run into the locant's. Each substituent ends at a `-` followed by a locant, or at the ring: the first carbon with count 6 directly followed by hydrogen with a count of 4 or less. Units after the ring, including later `C6H4`s, are read as usual. A numbered ring, whose substituents follow it, ends its sequence: its last substituent runs to the end of the group or component.
 
 The grammar is deliberately permissive. Parsing is a chart parse over the lattice and its result is a parse forest: one tree per combination of lattice path and grammatical choice. The grammatical choices are:
 
@@ -210,7 +212,7 @@ Every bond between two units gets an order. An explicit bond token fixes it. Oth
 
 ### 6.6 Carbon counts
 
-A carbon atom with a count of 2 or more, such as `C2H5` or `C6H12O6`, carries no connectivity. Unless a dictionary spelling covers the span, the tree is `Underdetermined`. The bundled dictionary spells out the conventional readings of a few formulas: `C2H5` is ethyl, `C6H5` is phenyl and `C6H6` is benzene. Formulas with no single conventional reading, such as `C3H7`, stay underdetermined:
+A carbon atom with a count of 2 or more, such as `C2H5` or `C6H12O6`, carries no connectivity. Unless a dictionary spelling covers the span, the tree is `Underdetermined`. The bundled dictionary spells out the conventional readings of a few formulas: `C2H5` is ethyl, `C6H5` is phenyl and `C6H6` is benzene. With a locant that names the attachment, `2-C5H4N` is 2-pyridyl and `1-C10H7` is 1-naphthyl. Formulas with no single conventional reading, such as `C3H7`, stay underdetermined:
 
 - Reason `MolecularFormula` when the span is the whole component, or when its degree of unsaturation is zero.
 - Reason `UnknownRing` when it sits between other units and its degree of unsaturation is above zero, as in the `C6H4` of `CH3C6H4CH3`. Locants number such a ring (section 6.11).
@@ -257,7 +259,9 @@ A locant numbers the ring of its arene (section 4): a unit written `C6H4`, `C6H3
 
 **After the ring.** The positions left for later units are pushed on the host stack lowest on top, so the next unit bonds to the lowest one, and the host search steps back to the next once it is filled. A counted unit whose host is one of these positions puts one copy on each open position of that ring, lowest first, instead of all on one atom: `o-C6H4(CO2H)2` is phthalic acid and `o-C6H4Cl2` is 1,2-dichlorobenzene.
 
-Bonds from substituents to their ring are backward under section 7.4. Bonds from the ring to later units are forward. A ring with no locant stays underdetermined under section 6.6, so `CH3C6H4CH3` still names no isomer.
+**Locants after the ring.** A numbered ring (section 4) is written with its substituents after it, each as `-`, a locant and the substituent: `C6H4-4-OMe`, `C6H3-3,5-(CF3)2`, `C6H3-2-Cl-4-F`. Position 1 is then the ring's bond to what comes before it, either the host or, when the ring starts its group or component, the open valence that group or component leaves: `CH2C6H4-4-OMe`, `P(C6H4-4-OMe)3`, `-C6H4-4-OMe`. The locants must not list position 1, and with it they must number exactly the substituted positions. `o-`, `m-` and `p-` place a single substituent as before: `C6H4-p-OMe`. The units of the last substituent continue the sequence from its positions, so a charge or marker can follow them, as in `MeOC6H4-4-NH3+`. A substituent may itself be a numbered ring, which takes every substituent written after it: `-C6H4-4-C6H4-4-OMe` is 4'-methoxybiphenyl-4-yl.
+
+Bonds to substituents written before their ring are backward under section 7.4. Bonds to substituents written after it, and to later units, are forward. A ring with no locant stays underdetermined under section 6.6, so `CH3C6H4CH3` still names no isomer.
 
 **Errors.** CF0108 reports a locant that:
 
@@ -267,9 +271,10 @@ Bonds from substituents to their ring are backward under section 7.4. Bonds from
 - with the other locants of its ring, does not number exactly the substituted positions as above;
 - is `o-`, `m-` or `p-` on a ring other than `C6H4`, or beside another locant;
 - stands directly before the ring after other substituents;
-- leaves no open position on its ring while more units follow the ring.
+- leaves no open position on its ring while more units follow the ring;
+- lists position 1 after the ring.
 
-Not covered: locants on other rings, such as the `2-C5H4N` of 2-pyridyl, and locants written after the ring, such as `C6H4-4-OMe`.
+Rings other than benzene are numbered by the dictionary instead, through spellings such as `2-C5H4N` (section 9). Not covered: locants written after the substituent they place, as in `C6H4OMe-4`.
 
 ## 7. Interpretation
 
@@ -374,6 +379,8 @@ reversed = ["HOOC", "HO2C"]
 ```
 
 `smiles` defines the fragment. Each `*` is an attachment point. `spellings` are read with the attachment on the left, `reversed` with the attachment on the right. Callers can load their own file or extend the default one.
+
+A spelling starts with a letter, or with a one- or two-digit locant followed by `-` and a spelling, as `2-C5H4N` names 2-pyridyl and `1-C10H7` 1-naphthyl. A spelling that starts with a digit is matched only where a locant may start (section 3.1), so the count of `(CH2)2-C5H4N` is never read as part of one.
 
 ## 10. Conformance
 

@@ -267,6 +267,21 @@ fn locants_can_fill_every_position() {
 }
 
 #[test]
+fn locants_can_follow_the_ring() {
+    reads_as("-C6H4-4-OCH3", "*c1ccc(OC)cc1");
+    reads_as("P(C6H4-4-OCH3)3", "COc1ccc(P(c2ccc(OC)cc2)c2ccc(OC)cc2)cc1");
+    reads_as("HOCH2C6H4-4-OCH3", "OCc1ccc(OC)cc1");
+    reads_as("-C6H3-3,5-(CF3)2", "*c1cc(C(F)(F)F)cc(C(F)(F)F)c1");
+    reads_as("(C6H3-2-Cl-4-F)CHO", "O=Cc1ccc(F)cc1Cl");
+    reads_as("CH3COC6H4-p-Br", "CC(=O)c1ccc(Br)cc1");
+    reads_as("4-CH3OC6H4C6H4-4-F", "COc1ccc(-c2ccc(F)cc2)cc1");
+    reads_as("CH3OC6H4-4-NH3+", "COc1ccc([NH3+])cc1");
+    reads_as("-C6H4-4-C6H4-4-OCH3", "*c1ccc(-c2ccc(OC)cc2)cc1");
+    assert_eq!(error_code("-C6H4-1-OCH3"), Code::LocantMismatch);
+    assert_eq!(error_code("-C6H3-4-OCH3"), Code::LocantMismatch);
+}
+
+#[test]
 fn locants_must_fit_their_ring() {
     for input in [
         "4-CH3OH",

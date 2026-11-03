@@ -4,13 +4,23 @@ Notable changes to the moiety crates. Versions follow [Semantic Versioning](http
 
 ## Unreleased
 
-Grammar version 2.
+Grammar version 2, dictionary 1.3.0.
 
 ### Added
 
-- Locants that number benzene rings: a list before the ring as in `4-MeOC6H4CHO` and `2,4-Cl2C6H3CO2H`, one per substituent as in `2-Cl-4-FC6H3CHO`, `o-`, `m-` and `p-` as in `p-CH3C6H4OH`, and locants on the ring itself as in `o-C6H4(CO2H)2`. A repeated group after a numbered ring puts one copy on each open position. A ring with no locant is still underdetermined.
+- Locants that number benzene rings: a list before the ring as in `4-MeOC6H4CHO` and `2,4-Cl2C6H3CO2H`, one per substituent as in `2-Cl-4-FC6H3CHO`, `o-`, `m-` and `p-` as in `p-CH3C6H4OH`, locants on the ring itself as in `o-C6H4(CO2H)2`, and locants after the ring as in `C6H4-4-OMe` and `P(C6H4-4-OMe)3`. A counted unit after a numbered ring puts one copy on each open position. A ring with no locant is still underdetermined.
 - CF0108 for locants that do not fit their ring.
 - `lexer::Locant` and `EdgeKind::Locant`.
+- Dictionary spellings may start with a locant, as `2-C5H4N` does, and are matched only where a locant may start.
+- Dictionary 1.3.0: 2-, 3- and 4-pyridyl (`2-C5H4N`, `2-Py`), 2- and 3-thienyl (`2-C4H3S`), 2- and 3-furyl (`2-C4H3O`), 1- and 2-naphthyl (`1-C10H7`, `1-Naph`), and `Fmoc`.
+
+### Changed
+
+- The writer puts a `-` before a spelling that starts with a locant unless a locant could start there, as in `Ph-2-C5H4N`, and writes out repeated components that start with one instead of counting them.
+
+### Fixed
+
+- The writer counted repeated components that start with an attachment marker, writing `*C.*C` as `2-CH3`, which does not read back. They are now written out: `-CH3.-CH3`.
 
 ## 0.3.0 - 2026-11-02
 

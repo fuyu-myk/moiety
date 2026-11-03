@@ -1,5 +1,5 @@
-//! Benzene rings numbered by locants and the substituents written before them
-//! (grammar, section 6.11).
+//! Benzene rings numbered by locants and the substituents written before or
+//! after them (grammar, section 6.11).
 
 use super::{Item, Parser, Seq, SyntaxError, Unit, UnitKind};
 use crate::diagnostic::Code;
@@ -8,15 +8,18 @@ use crate::lexer::{Edge, EdgeKind, Locant};
 use crate::molecule::BondOrder;
 use crate::span::Span;
 
-/// A benzene ring numbered by locants, with the substituents written before it
-/// (grammar, section 6.11).
+/// A benzene ring numbered by locants, with its substituents (grammar, section 6.11).
 #[derive(Clone, Debug)]
 pub(crate) struct Arene {
     /// The `C6H4` of the ring.
     pub ring: Span,
     pub substituents: Vec<Substituent>,
-    /// Positions left for the units after the ring, lowest first.
+    /// Positions left for the units after the ring, lowest first. When the
+    /// substituents follow the ring, these are the last substituent's, whose
+    /// units continue the sequence.
     pub open: Vec<u8>,
+    /// Whether the substituents are written after the ring.
+    pub after: bool,
 }
 
 /// A substituent of a numbered ring, assembled like a group.
@@ -108,6 +111,7 @@ impl Parser<'_> {
                     bond.map(|(order, edge)| (order, edge.span)),
                     ring,
                     hydrogens,
+                    false,
                 )?;
                 return Ok(Some(Unit {
                     kind: UnitKind::Arene(arene),
@@ -143,17 +147,104 @@ impl Parser<'_> {
     }
 }
 
+impl Parser<'_> {
+    /// Whether the next tokens are `-` and a locant, which start a substituent
+    /// written after its ring.
+    fn locant_follows(&self) -> bool {
+        matches!(
+            self.tokens.get(self.pos..self.pos + 2),
+            Some([
+                Edge {
+                    kind: EdgeKind::Bond(BondOrder::Single),
+                    ..
+                },
+                Edge {
+                    kind: EdgeKind::Locant(_),
+                    ..
+                },
+            ])
+        )
+    }
+
+    /// Parses a benzene ring followed by its substituents, each written `-`, a
+    /// locant and the substituent. The last substituent runs to the end of the
+    /// sequence, and its units are returned to continue it after the ring.
+    pub(super) fn numbered(&mut self) -> Result<Option<(Unit, Vec<Item>)>, SyntaxError> {
+        let start = self.pos;
+        let Some((ring, hydrogens)) = self.ring() else {
+            return Ok(None);
+        };
+        if !self.locant_follows() {
+            self.pos = start;
+            return Ok(None);
+        }
+        let mut written = Vec::new();
+        while self.locant_follows() {
+            self.pos += 1;
+            let (span, locant) = self.take_locant().expect("checked above");
+            let mut items: Vec<Item> = Vec::new();
+            loop {
+                if !items.is_empty() && self.locant_follows() {
+                    break;
+                }
+                let bond = match self.peek() {
+                    Some(edge) if !items.is_empty() => match edge.kind {
+                        EdgeKind::Bond(order) => {
+                            self.pos += 1;
+                            Some((order, edge))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                let (unit, rest) = match self.numbered()? {
+                    Some((unit, rest)) => (Some(unit), rest),
+                    None => (self.unit()?, Vec::new()),
+                };
+                let Some(unit) = unit else {
+                    if let Some((_, edge)) = bond {
+                        return Err(Self::unexpected(edge));
+                    }
+                    if items.is_empty() {
+                        return Err(mismatch(span, "this locant has no substituent after it"));
+                    }
+                    break;
+                };
+                let bond = bond.map(|(order, edge)| (order, edge.span));
+                items.push(Item { bond, unit });
+                items.extend(rest);
+            }
+            written.push((span, locant, items));
+        }
+        let rest = written
+            .last()
+            .map(|(_, _, items)| items.clone())
+            .unwrap_or_default();
+        let mut arene = number(written, None, ring, hydrogens, true)?;
+        let last = arene.substituents.pop().expect("at least one substituent");
+        arene.open = last.positions;
+        let unit = Unit {
+            kind: UnitKind::Arene(arene),
+            count: None,
+            span: ring.cover(last.locant),
+        };
+        Ok(Some((unit, rest)))
+    }
+}
+
 pub(super) fn mismatch(span: Span, message: &str) -> SyntaxError {
     Parser::error(Code::LocantMismatch, span, message)
 }
 
-/// Gives ring positions to the substituents written before a ring and to the
-/// units after it, checking them against the ring's hydrogens.
+/// Gives ring positions to a ring's substituents and to the units around it,
+/// checking them against the ring's hydrogens. `after` is whether the
+/// substituents are written after the ring, where position 1 is never listed.
 fn number(
     written: Vec<(Span, Locant, Vec<Item>)>,
     bond: Option<(BondOrder, Span)>,
     ring: Span,
     hydrogens: u8,
+    after: bool,
 ) -> Result<Arene, SyntaxError> {
     let substituted = 6 - usize::from(hydrogens);
     let name = if hydrogens == 1 {
@@ -193,6 +284,7 @@ fn number(
             ring,
             substituents: Vec::new(),
             open,
+            after,
         });
     }
     let last = written.len() - 1;
@@ -217,6 +309,12 @@ fn number(
                     noun(positions.len(), "position", "positions"),
                     noun(copies, "copy", "copies")
                 ),
+            ));
+        }
+        if after && positions.contains(&1) {
+            return Err(mismatch(
+                span,
+                "position 1 is where the ring bonds to what comes before it",
             ));
         }
         for &position in &positions {
@@ -251,6 +349,7 @@ fn number(
         ring,
         substituents,
         open,
+        after,
     })
 }
 

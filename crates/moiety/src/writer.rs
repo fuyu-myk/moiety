@@ -39,7 +39,7 @@ pub fn condense(molecule: &Molecule, dictionary: &Dictionary) -> Result<String, 
     let mut merged: Vec<(usize, String)> = Vec::new();
     for part in parts {
         match merged.last_mut() {
-            Some((count, last)) if *last == part => *count += 1,
+            Some((count, last)) if *last == part && countable(&part) => *count += 1,
             _ => merged.push((1, part)),
         }
     }
@@ -443,7 +443,10 @@ impl<'a> Writer<'a> {
         for (i, &node) in path.iter().enumerate() {
             let previous = if i == 0 { parent } else { Some(path[i - 1]) };
             let next = path.get(i + 1).copied();
-            out.push_str(&self.label(node, previous.is_none() && i == 0, next.is_none()));
+            push_label(
+                out,
+                &self.label(node, previous.is_none() && i == 0, next.is_none()),
+            );
             let mut inline: BTreeMap<String, usize> = BTreeMap::new();
             let mut branches: Vec<String> = Vec::new();
             for &(other, order) in &self.edges[node] {
@@ -529,6 +532,30 @@ impl<'a> Writer<'a> {
     }
 }
 
+/// Whether a label starts with a locant, as the spelling `2-C5H4N` does.
+fn starts_with_locant(text: &str) -> bool {
+    text.starts_with(|c: char| c.is_ascii_digit())
+}
+
+/// Whether a component reads correctly after a count: one that starts with a
+/// locant or an attachment marker does not.
+fn countable(part: &str) -> bool {
+    !starts_with_locant(part) && !part.starts_with(['-', '=', '#'])
+}
+
+/// Appends a label. A spelling that starts with a locant is read only where a
+/// locant may start (grammar, section 9), so it gets a `-` bond after anything else.
+fn push_label(out: &mut String, label: &str) {
+    let locant_may_start = out
+        .chars()
+        .last()
+        .is_none_or(|c| matches!(c, '(' | '[' | '-' | '=' | '#'));
+    if starts_with_locant(label) && !locant_may_start {
+        out.push('-');
+    }
+    out.push_str(label);
+}
+
 fn push_merged(out: &mut String, branches: Vec<String>) {
     let mut iter = branches.into_iter().peekable();
     while let Some(branch) = iter.next() {
@@ -611,6 +638,9 @@ mod tests {
         assert_eq!(write("C=CC"), "CH2=CHCH3");
         assert_eq!(write("O.O.O"), "3H2O");
         assert_eq!(write("[Na+].[Cl-]"), "Na+.Cl-");
+        assert_eq!(write("c1ccc(-c2ccccn2)cc1"), "Ph-2-C5H4N");
+        assert_eq!(write("Cc1ccccn1.Cc1ccccn1"), "2-C5H4NCH3.2-C5H4NCH3");
+        assert_eq!(write("*C.*C"), "-CH3.-CH3");
     }
 
     #[test]
@@ -629,6 +659,12 @@ mod tests {
             "OCC(O)CO",
             "CC(C)CC(C)(C)C",
             "O=CCOC(C=O)=O",
+            "c1ccc(-c2ccccn2)cc1",
+            "OCc1cccnc1",
+            "CC(=O)c1cccs1",
+            "c1ccc2cc(C(F)(F)F)ccc2c1",
+            "Cc1ccccn1.Cc1ccccn1",
+            "*c1ccccn1.*c1ccccn1",
         ] {
             round_trips(smiles);
         }

@@ -120,13 +120,13 @@ mod tests {
             [[entry]]
             name = "pyridin-2-yl"
             smiles = "*c1ccccn1"
-            spellings = ["2-Pyr"]
+            spellings = ["2Pyr"]
         "#;
         assert!(matches!(
             extend(default_dictionary(), extra),
             Err(LoadError::Entry(_))
         ));
-        let fixed = extra.replace("2-Pyr", "Pyr2");
+        let fixed = extra.replace("2Pyr", "2-Pyr");
         let dictionary = extend(default_dictionary(), &fixed).unwrap();
         assert_eq!(dictionary.name(), "moiety-default");
         assert_eq!(dictionary.get("methyl").unwrap().spellings(), ["Me", "Mt"]);

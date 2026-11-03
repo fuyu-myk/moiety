@@ -269,7 +269,11 @@ impl Parser<'_> {
                 },
                 _ => None,
             };
-            match self.unit()? {
+            let (unit, rest) = match self.numbered()? {
+                Some((unit, rest)) => (Some(unit), rest),
+                None => (self.unit()?, Vec::new()),
+            };
+            match unit {
                 Some(unit) => {
                     if let [Item { unit: first, .. }] = items.as_slice() {
                         if matches!(&first.kind, UnitKind::Arene(arene) if arene.open.is_empty()) {
@@ -280,6 +284,7 @@ impl Parser<'_> {
                         }
                     }
                     items.push(Item { bond, unit });
+                    items.extend(rest);
                 }
                 None => {
                     if bond.is_some() {

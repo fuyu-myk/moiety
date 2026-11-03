@@ -590,6 +590,128 @@ expect = "invalid"
 code = "CF0105"
 span = [4, 6]
 
+[[case]]
+id = "locant/after-the-ring"
+corpus = "curated"
+input = "-C6H4-4-OMe"
+expect = "unique"
+smiles = ["*c1ccc(OC)cc1"]
+
+[[case]]
+id = "locant/after-the-ring-in-a-group"
+corpus = "curated"
+input = "P(C6H4-4-OMe)3"
+expect = "unique"
+smiles = ["COc1ccc(P(c2ccc(OC)cc2)c2ccc(OC)cc2)cc1"]
+
+[[case]]
+id = "locant/after-the-ring-on-a-chain"
+corpus = "curated"
+input = "HOCH2C6H4-4-OMe"
+expect = "unique"
+smiles = ["OCc1ccc(OC)cc1"]
+
+[[case]]
+id = "locant/after-the-ring-two-copies"
+corpus = "curated"
+input = "-C6H3-3,5-(CF3)2"
+expect = "unique"
+smiles = ["*c1cc(C(F)(F)F)cc(C(F)(F)F)c1"]
+
+[[case]]
+id = "locant/after-the-ring-per-substituent"
+corpus = "curated"
+input = "(C6H3-2-Cl-4-F)CHO"
+expect = "unique"
+smiles = ["O=Cc1ccc(F)cc1Cl"]
+
+[[case]]
+id = "locant/after-the-ring-para"
+corpus = "curated"
+input = "CH3COC6H4-p-Br"
+expect = "unique"
+smiles = ["CC(=O)c1ccc(Br)cc1"]
+
+[[case]]
+id = "locant/after-the-ring-then-a-charge"
+corpus = "curated"
+input = "MeOC6H4-4-NH3+"
+expect = "unique"
+smiles = ["COc1ccc([NH3+])cc1"]
+
+[[case]]
+id = "locant/after-the-ring-nested"
+corpus = "curated"
+input = "-C6H4-4-C6H4-4-OMe"
+expect = "unique"
+smiles = ["*c1ccc(-c2ccc(OC)cc2)cc1"]
+
+[[case]]
+id = "locant/after-the-ring-lists-position-one"
+corpus = "adversarial"
+input = "-C6H4-1-OMe"
+expect = "invalid"
+code = "CF0108"
+span = [6, 8]
+
+[[case]]
+id = "abbrev/2-pyridyl"
+corpus = "curated"
+input = "2-C5H4NCH2OH"
+expect = "unique"
+smiles = ["OCc1ccccn1"]
+
+[[case]]
+id = "abbrev/3-pyridyl-short"
+corpus = "curated"
+input = "3-PyCHO"
+expect = "unique"
+smiles = ["O=Cc1cccnc1"]
+
+[[case]]
+id = "abbrev/2-thienyl"
+corpus = "curated"
+input = "CH3CO-2-C4H3S"
+expect = "unique"
+smiles = ["CC(=O)c1cccs1"]
+
+[[case]]
+id = "abbrev/2-furyl"
+corpus = "curated"
+input = "2-C4H3OCHO"
+expect = "unique"
+smiles = ["O=Cc1ccco1"]
+
+[[case]]
+id = "abbrev/1-naphthyl"
+corpus = "curated"
+input = "1-C10H7CH2OH"
+expect = "unique"
+smiles = ["OCc1cccc2ccccc12"]
+
+[[case]]
+id = "abbrev/heteroaryl-inside-group"
+corpus = "curated"
+input = "(2-C5H4N)3P"
+expect = "unique"
+smiles = ["c1ccc(P(c2ccccn2)c2ccccn2)nc1"]
+
+[[case]]
+id = "underdetermined/pyridyl-without-locant"
+corpus = "curated"
+input = "C5H4NCH2OH"
+expect = "underdetermined"
+reason = "unknown-ring"
+span = [0, 4]
+
+[[case]]
+id = "underdetermined/locant-spelling-after-a-count"
+corpus = "adversarial"
+input = "CH3(CH2)2-C5H4N"
+expect = "underdetermined"
+reason = "unknown-ring"
+span = [10, 14]
+
 # Generated in bulk below from hand-checked tables.
 
 [[case]]
@@ -2120,12 +2242,11 @@ reason = "unknown-ring"
 span = [2, 6]
 
 [[case]]
-id = "underdetermined/fmoc"
+id = "abbrev/fmoc-glycine"
 corpus = "curated"
 input = "FmocNHCH2COOH"
-expect = "underdetermined"
-reason = "unknown-abbreviation"
-span = [0, 4]
+expect = "unique"
+smiles = ["OC(=O)CNC(=O)OCC1c2ccccc2-c2ccccc12"]
 
 [[case]]
 id = "invalid/argon-is-not-aryl"
