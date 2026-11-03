@@ -379,10 +379,13 @@ fn future_atoms(seq: &Seq) -> Vec<u32> {
         let per_copy = match &item.unit.kind {
             UnitKind::Atom { .. } | UnitKind::Abbreviation { .. } => 1,
             UnitKind::Group { seq, .. } => future_atoms(seq)[0],
-            UnitKind::Arene(arene) => arene.substituents.iter().fold(6, |sum: u32, s| {
-                let copies = u32::try_from(s.positions.len()).unwrap_or(u32::MAX);
-                sum.saturating_add(future_atoms(&s.seq)[0].saturating_mul(copies))
-            }),
+            UnitKind::Arene(arene) => arene.substituents.iter().fold(
+                u32::try_from(arene.size).unwrap_or(u32::MAX),
+                |sum: u32, s| {
+                    let copies = u32::try_from(s.positions.len()).unwrap_or(u32::MAX);
+                    sum.saturating_add(future_atoms(&s.seq)[0].saturating_mul(copies))
+                },
+            ),
         };
         sums[i] = sums[i + 1].saturating_add(per_copy.saturating_mul(item.unit.count()));
     }

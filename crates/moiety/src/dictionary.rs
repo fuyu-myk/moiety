@@ -1,8 +1,8 @@
-//! Loading abbreviation dictionaries from TOML.
+//! Loading abbreviation dictionaries and ring templates from TOML.
 
 use std::sync::OnceLock;
 
-use moiety_core::{Dictionary, DictionaryError, Entry};
+use moiety_core::{Dictionary, DictionaryError, Entry, RingTemplate};
 use serde::Deserialize;
 
 const DEFAULT: &str = include_str!("../data/dictionary.toml");
@@ -13,7 +13,7 @@ pub enum LoadError {
     /// The file is not valid TOML or does not have the dictionary layout.
     #[error("dictionary file is malformed: {0}")]
     Toml(#[from] toml::de::Error),
-    /// An entry could not be defined or added.
+    /// An entry or ring template could not be defined or added.
     #[error("dictionary entry rejected: {0}")]
     Entry(#[from] DictionaryError),
 }
@@ -24,6 +24,8 @@ struct File {
     dictionary: Header,
     #[serde(default)]
     entry: Vec<EntryFile>,
+    #[serde(default)]
+    ring: Vec<RingFile>,
 }
 
 #[derive(Deserialize)]
@@ -44,6 +46,13 @@ struct EntryFile {
     reversed: Vec<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RingFile {
+    name: String,
+    smiles: String,
+}
+
 /// The dictionary that ships with moiety.
 ///
 /// # Panics
@@ -59,36 +68,40 @@ pub fn default_dictionary() -> &'static Dictionary {
 ///
 /// # Errors
 ///
-/// Fails when the text is not a dictionary file or an entry is invalid.
+/// Fails when the text is not a dictionary file or an entry or ring template is invalid.
 pub fn load(text: &str) -> Result<Dictionary, LoadError> {
     let file: File = toml::from_str(text)?;
     let mut dictionary = Dictionary::new(&file.dictionary.name, &file.dictionary.version);
-    add_entries(&mut dictionary, file.entry)?;
+    add_file(&mut dictionary, file)?;
     Ok(dictionary)
 }
 
-/// Adds the entries of a TOML dictionary to `base`, replacing entries with the same name.
+/// Adds the entries and ring templates of a TOML dictionary to `base`, replacing
+/// those with the same name.
 ///
 /// The result keeps the name and version of `base`.
 ///
 /// # Errors
 ///
-/// Fails when the text is not a dictionary file or an entry is invalid.
+/// Fails when the text is not a dictionary file or an entry or ring template is invalid.
 pub fn extend(base: &Dictionary, text: &str) -> Result<Dictionary, LoadError> {
     let file: File = toml::from_str(text)?;
     let mut dictionary = base.clone();
-    add_entries(&mut dictionary, file.entry)?;
+    add_file(&mut dictionary, file)?;
     Ok(dictionary)
 }
 
-fn add_entries(dictionary: &mut Dictionary, entries: Vec<EntryFile>) -> Result<(), LoadError> {
-    for entry in entries {
+fn add_file(dictionary: &mut Dictionary, file: File) -> Result<(), LoadError> {
+    for entry in file.entry {
         dictionary.insert(Entry::new(
             &entry.name,
             &entry.smiles,
             entry.spellings,
             entry.reversed,
         )?)?;
+    }
+    for ring in file.ring {
+        dictionary.insert_ring(RingTemplate::new(&ring.name, &ring.smiles)?)?;
     }
     Ok(())
 }

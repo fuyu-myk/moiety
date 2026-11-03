@@ -18,7 +18,7 @@ use crate::span::Span;
 use crate::suggest::suggest;
 
 /// Version of the grammar this crate implements.
-pub const GRAMMAR_VERSION: u32 = 2;
+pub const GRAMMAR_VERSION: u32 = 3;
 /// Version of the ranking policy this crate implements.
 pub const RANKING_POLICY_VERSION: u32 = 2;
 /// Longest formula, in bytes, that [`interpret`] accepts.

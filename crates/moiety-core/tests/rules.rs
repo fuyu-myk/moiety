@@ -2,7 +2,7 @@
 
 use moiety_core::{
     AmbiguityClass, ChargeConvention, Code, Dictionary, Direction, Entry, Interpretation, Options,
-    Span, Underdetermination, interpret,
+    RingTemplate, Span, Underdetermination, interpret,
 };
 
 fn dictionary() -> Dictionary {
@@ -21,6 +21,14 @@ fn dictionary() -> Dictionary {
         )
         .unwrap();
         d.insert(entry).unwrap();
+    }
+    for (name, smiles) in [
+        ("pyridine", "n1ccccc1"),
+        ("thiophene", "s1cccc1"),
+        ("naphthalene", "c1cccc2ccccc12"),
+    ] {
+        d.insert_ring(RingTemplate::new(name, smiles).unwrap())
+            .unwrap();
     }
     d
 }
@@ -357,6 +365,45 @@ fn locants_can_be_spelled_out() {
 }
 
 #[test]
+fn templates_number_rings_as_molecules() {
+    reads_as("4-(CH3)2NC5H4N", "CN(C)c1ccncc1");
+    reads_as("2,6-(CH3)2C5H3N", "Cc1cccc(C)n1");
+    reads_as("4-ClC5H4N", "Clc1ccncc1");
+    reads_as("2,5-(CH3)2C4H2S", "Cc1ccc(C)s1");
+    reads_as("1-ClC10H7", "Clc1cccc2ccccc12");
+}
+
+#[test]
+fn templates_take_attachment_locants() {
+    reads_as("2-C5H4NCH2OH", "OCc1ccccn1");
+    reads_as("-5-Br-2-C5H3N", "*c1ccc(Br)cn1");
+    reads_as("HOCH2-2,6-C5H3N-CH2OH", "OCc1cccc(CO)n1");
+    reads_as("2,6-C5H3N(CH2OH)2", "OCc1cccc(CO)n1");
+    reads_as("P(C5H4N-2)3", "c1ccc(P(c2ccccn2)c2ccccn2)nc1");
+    reads_as("-C10H7-2", "*c1ccc2ccccc2c1");
+    reads_as("C5H4N-2-CH=NNH2", "NN=Cc1ccccn1");
+    reads_as("2-Cl-1,4-C6H3(OH)2", "Oc1ccc(O)c(Cl)c1");
+}
+
+#[test]
+fn template_locants_must_fit() {
+    for input in [
+        "1-ClC5H4N",
+        "4-ClC5H3N",
+        "p-ClC5H4N",
+        "CH3C5H4N-2-OH",
+        "9-ClC10H7",
+    ] {
+        assert_eq!(error_code(input), Code::LocantMismatch, "{input}");
+    }
+    let reason = match read("C5H4NCH2OH") {
+        Interpretation::Underdetermined { reason, .. } => reason,
+        other => panic!("expected underdetermined, got {}", other.kind()),
+    };
+    assert_eq!(reason, Underdetermination::UnknownRing);
+}
+
+#[test]
 fn locants_must_fit_their_ring() {
     for input in [
         "4-CH3OH",
@@ -367,7 +414,6 @@ fn locants_must_fit_their_ring() {
         "1,2-Cl2C6H3OH",
         "m-Cl2C6H3OH",
         "p-Cl-2-FC6H3OH",
-        "2-Cl-1,4-C6H3(OH)2",
         "1,2,4-C6H4(OH)2",
         "1,4-Cl2C6H4OH",
         "02-ClC6H4OH",

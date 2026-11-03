@@ -28,6 +28,7 @@ mod reading;
 pub mod smiles;
 mod span;
 mod suggest;
+mod template;
 
 pub use diagnostic::{Code, Diagnostic, Label, Severity};
 pub use dictionary::{Dictionary, DictionaryError, Entry};
@@ -41,3 +42,4 @@ pub use reading::{
     Ambiguity, AmbiguityClass, Direction, Interpretation, Provenance, Reading, Underdetermination,
 };
 pub use span::Span;
+pub use template::{MAX_POSITIONS, RingTemplate};

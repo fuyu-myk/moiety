@@ -51,6 +51,18 @@ pub(crate) fn default_valence(symbol: &str, used: u8) -> Option<u8> {
     )
 }
 
+/// The implicit hydrogens of an organic-subset atom whose bonds use `bonds` of its
+/// valence: the lowest default valence that fits, less one when the atom is
+/// aromatic, as OpenSMILES counts them. Aromatic `c` gets one, `n`, `o` and `s` none.
+pub(crate) fn implicit_hydrogens(symbol: &str, bonds: u8, aromatic: bool) -> Option<u8> {
+    let valence = default_valence(symbol, bonds)?;
+    Some(
+        valence
+            .saturating_sub(bonds)
+            .saturating_sub(u8::from(aromatic)),
+    )
+}
+
 /// Whether `symbol` may be written in lowercase as an aromatic atom.
 pub(crate) fn aromatic_symbol(symbol: &str) -> bool {
     matches!(symbol, "B" | "C" | "N" | "O" | "P" | "S" | "Se" | "As")

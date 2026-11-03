@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{SmilesError, aromatic_symbol, default_valence};
+use super::{SmilesError, aromatic_symbol, implicit_hydrogens};
 use crate::aromatic::perceive_aromaticity;
 use crate::element::Element;
 use crate::molecule::{Atom, BondOrder, Molecule};
@@ -351,11 +351,11 @@ impl Reader<'_> {
                 continue;
             }
             let atom = self.molecule.atoms()[index];
-            let used = self.molecule.bond_valence(index) + u8::from(atom.aromatic);
+            let bonds = self.molecule.bond_valence(index);
             let element = atom.element().expect("implicit atoms are elements");
-            let valence = default_valence(element.symbol(), used)
-                .expect("implicit atoms are in the organic subset");
-            self.molecule.atoms_mut()[index].hydrogens = valence.saturating_sub(used);
+            self.molecule.atoms_mut()[index].hydrogens =
+                implicit_hydrogens(element.symbol(), bonds, atom.aromatic)
+                    .expect("implicit atoms are in the organic subset");
         }
         Ok(self.molecule)
     }
@@ -386,6 +386,19 @@ mod tests {
         assert_eq!(molecule.atoms()[3].charge, -1);
         let benzene = parse("c1ccccc1").unwrap();
         assert!(benzene.atoms().iter().all(|a| a.hydrogens == 1));
+        for (smiles, hydrogens) in [
+            ("s1cccc1", vec![0, 1, 1, 1, 1]),
+            ("o1cccc1", vec![0, 1, 1, 1, 1]),
+            ("Cn1cccc1", vec![3, 0, 1, 1, 1, 1]),
+        ] {
+            let counts: Vec<u8> = parse(smiles)
+                .unwrap()
+                .atoms()
+                .iter()
+                .map(|a| a.hydrogens)
+                .collect();
+            assert_eq!(counts, hydrogens, "{smiles}");
+        }
     }
 
     #[test]

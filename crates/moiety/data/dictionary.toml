@@ -6,7 +6,7 @@
 
 [dictionary]
 name = "moiety-default"
-version = "1.3.0"
+version = "1.4.0"
 
 # Alkyl
 
@@ -434,3 +434,21 @@ name = "sulfo"
 smiles = "*S(=O)(=O)O"
 spellings = ["SO3H"]
 reversed = ["HO3S"]
+
+# Ring templates, numbered in SMILES order without the atoms two rings share
+
+[[ring]]
+name = "pyridine"
+smiles = "n1ccccc1"
+
+[[ring]]
+name = "thiophene"
+smiles = "s1cccc1"
+
+[[ring]]
+name = "furan"
+smiles = "o1cccc1"
+
+[[ring]]
+name = "naphthalene"
+smiles = "c1cccc2ccccc12"
