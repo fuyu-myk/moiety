@@ -108,13 +108,13 @@ Current results (`moiety conformance`):
 
 | Metric | Result | v1.0 target |
 | --- | --- | --- |
-| Cases passed | 386 / 386 | |
+| Cases passed | 388 / 388 | |
 | False-unique rate | 0 / 28 | 0% |
 | Ambiguity class recall | 28 / 28 | at least 98% |
 | Top-1 accuracy, ambiguous cases | 28 / 28 | at least 85% |
 | Diagnostic span accuracy | 38 / 38 | at least 90% |
 | Round-trip recovery | 665 / 665 (201 curated, 500 generated) | at least 95% |
-| Ambiguity rate | 28 / 386 | reported |
+| Ambiguity rate | 28 / 388 | reported |
 
 Differential testing against MolScribe's condensed-formula expander covers 246 substituent labels: 182 match exactly, every disagreement has a recorded verdict, and none is decided against moiety. See [conformance/differential](conformance/differential/README.md).
 
