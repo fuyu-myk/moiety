@@ -18,7 +18,7 @@ use crate::span::Span;
 use crate::suggest::suggest;
 
 /// Version of the grammar this crate implements.
-pub const GRAMMAR_VERSION: u32 = 1;
+pub const GRAMMAR_VERSION: u32 = 2;
 /// Version of the ranking policy this crate implements.
 pub const RANKING_POLICY_VERSION: u32 = 2;
 /// Longest formula, in bytes, that [`interpret`] accepts.
@@ -842,6 +842,7 @@ fn title(code: Code) -> &'static str {
         Code::UnmatchedClose => "unmatched closing bracket",
         Code::EmptyGroup => "empty group",
         Code::CountOutOfRange => "count or charge out of range",
+        Code::LocantMismatch => "locants do not fit the ring",
         _ => "unexpected token",
     }
 }

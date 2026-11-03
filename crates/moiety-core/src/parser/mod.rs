@@ -4,6 +4,10 @@ use crate::lexer::{Bracket, Edge, EdgeKind, Lattice, MAX_CHARGE, MAX_COUNT};
 use crate::molecule::BondOrder;
 use crate::span::Span;
 
+mod arene;
+
+pub(crate) use arene::{Arene, Substituent};
+
 /// One parse tree of a component, built from one path through its lattice.
 #[derive(Clone, Debug)]
 pub(crate) struct Tree {
@@ -57,6 +61,7 @@ pub(crate) enum UnitKind {
         bond: Option<(BondOrder, Span)>,
         seq: Seq,
     },
+    Arene(Arene),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -168,7 +173,7 @@ impl Parser<'_> {
                 self.pos += 1;
             }
         }
-        let seq = self.seq()?;
+        let seq = self.seq(lead.is_none())?;
         if seq.items.is_empty() {
             return Err(match self.peek() {
                 Some(edge) => Self::unexpected(edge),
@@ -226,6 +231,7 @@ impl Parser<'_> {
             EdgeKind::Bond(_) | EdgeKind::Marker(_) => "a bond must sit between two units",
             EdgeKind::Sign(_) | EdgeKind::Charge(_) => "a charge must end its component",
             EdgeKind::Descriptor => "a descriptor must start its component",
+            EdgeKind::Locant(_) => "a locant must start its component, a group or a substituent",
             _ => "unexpected token",
         };
         Self::error(Code::UnexpectedToken, edge.span, what)
@@ -243,8 +249,14 @@ impl Parser<'_> {
         }
     }
 
-    fn seq(&mut self) -> Result<Seq, SyntaxError> {
+    /// Parses a unit sequence. `arene_allowed` is whether it may start with locants.
+    fn seq(&mut self, arene_allowed: bool) -> Result<Seq, SyntaxError> {
         let mut items = Vec::new();
+        if arene_allowed {
+            if let Some(unit) = self.arene()? {
+                items.push(Item { bond: None, unit });
+            }
+        }
         loop {
             let start = self.pos;
             let bond = match self.peek() {
@@ -258,11 +270,29 @@ impl Parser<'_> {
                 _ => None,
             };
             match self.unit()? {
-                Some(unit) => items.push(Item { bond, unit }),
+                Some(unit) => {
+                    if let [Item { unit: first, .. }] = items.as_slice() {
+                        if matches!(&first.kind, UnitKind::Arene(arene) if arene.open.is_empty()) {
+                            return Err(arene::mismatch(
+                                first.span,
+                                "this ring has no open position for the units after it",
+                            ));
+                        }
+                    }
+                    items.push(Item { bond, unit });
+                }
                 None => {
                     if bond.is_some() {
-                        self.pos = start;
-                        return Err(Self::unexpected(self.tokens[start]));
+                        let blamed = match self.peek() {
+                            Some(
+                                edge @ Edge {
+                                    kind: EdgeKind::Locant(_),
+                                    ..
+                                },
+                            ) => edge,
+                            _ => self.tokens[start],
+                        };
+                        return Err(Self::unexpected(blamed));
                     }
                     return Ok(Seq { items });
                 }
@@ -330,7 +360,7 @@ impl Parser<'_> {
             }
             _ => None,
         };
-        let seq = self.seq()?;
+        let seq = self.seq(true)?;
         match self.peek() {
             Some(edge) => match edge.kind {
                 EdgeKind::Close(closing) => {
@@ -413,6 +443,39 @@ mod tests {
             Code::CountOutOfRange
         );
         assert_eq!(trees("CH3-=CH3").unwrap_err().code, Code::UnexpectedToken);
+        let error = trees("CH3-4-ClC6H4").unwrap_err();
+        assert_eq!(
+            (error.code, error.span),
+            (Code::UnexpectedToken, Span::new(4, 6))
+        );
+    }
+
+    #[test]
+    fn numbers_benzene_rings() {
+        let all = trees("2-Cl-4-FC6H3CHO").unwrap();
+        let UnitKind::Arene(arene) = &all[0].seq.items[0].unit.kind else {
+            panic!("expected a numbered ring");
+        };
+        let positions: Vec<&[u8]> = arene
+            .substituents
+            .iter()
+            .map(|s| s.positions.as_slice())
+            .collect();
+        assert_eq!(positions, [&[2][..], &[4][..]]);
+        assert_eq!(arene.open, [1]);
+        assert_eq!(arene.ring, Span::new(8, 12));
+        assert_eq!(all[0].seq.items.len(), 4);
+        let all = trees("o-C6H4(OH)2").unwrap();
+        let UnitKind::Arene(arene) = &all[0].seq.items[0].unit.kind else {
+            panic!("expected a numbered ring");
+        };
+        assert!(arene.substituents.is_empty());
+        assert_eq!(arene.open, [1, 2]);
+        let error = trees("2,4-ClC6H3OH").unwrap_err();
+        assert_eq!(
+            (error.code, error.span),
+            (Code::LocantMismatch, Span::new(0, 4))
+        );
     }
 
     #[test]

@@ -2,6 +2,16 @@
 
 Notable changes to the moiety crates. Versions follow [Semantic Versioning](https://semver.org/); before 1.0, a minor version can change how formulas are read. The grammar, the ranking policy, the bundled dictionary and the conformance suite carry their own versions, given where they change.
 
+## Unreleased
+
+Grammar version 2.
+
+### Added
+
+- Locants that number benzene rings: a list before the ring as in `4-MeOC6H4CHO` and `2,4-Cl2C6H3CO2H`, one per substituent as in `2-Cl-4-FC6H3CHO`, `o-`, `m-` and `p-` as in `p-CH3C6H4OH`, and locants on the ring itself as in `o-C6H4(CO2H)2`. A repeated group after a numbered ring puts one copy on each open position. A ring with no locant is still underdetermined.
+- CF0108 for locants that do not fit their ring.
+- `lexer::Locant` and `EdgeKind::Locant`.
+
 ## 0.3.0 - 2026-11-02
 
 Dictionary 1.2.0, conformance suite 0.3.0.

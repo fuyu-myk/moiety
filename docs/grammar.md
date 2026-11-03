@@ -1,8 +1,10 @@
-# moiety grammar, version 1
+# moiety grammar, version 2
 
 This document is the normative specification of the condensed-formula language that moiety reads. The reference implementation lives in `crates/moiety-core`, and the conformance suite in `conformance/` is the executable form of the rules below. Where this document and the implementation disagree, the implementation has a bug.
 
-Grammar version: **1**. Ranking policy version: **2**.
+Grammar version: **2**. Ranking policy version: **2**.
+
+Version 2 adds locants that number benzene rings (section 6.11). Version 1 read every `C6H4` between other units as an unknown ring.
 
 ## 1. Scope
 
@@ -12,6 +14,7 @@ In scope:
 
 - Condensed and semi-structural formulas: `CH3CH2OH`, `(CH3)2CHCOOH`, `CH3(CH2)4CH3`, `HOCH2CH2OH`.
 - Abbreviations from a declared, versioned dictionary: `Ph`, `Me`, `Et`, `Boc`, `Ts`, `OMe`, `CO2Et`.
+- Benzene rings numbered by locants: `4-MeOC6H4CHO`, `2,4-Cl2C6H3CO2H`, `o-C6H4(CO2H)2`.
 - Formal charges where written, attachment markers, and dot-separated multi-component formulas.
 - Simple salts whose cation is written first: `CuSO4`, `Na2CO3` (rule R5).
 
@@ -20,7 +23,7 @@ Out of scope, reported rather than guessed:
 - Stereochemistry and isotopes. Descriptors are skipped with a warning; `D` and `T` are read as hydrogen with a warning.
 - Systematic names.
 - Molecular formulas such as `C6H12O6`, which carry no connectivity.
-- Rings that the dictionary does not define.
+- Rings that the dictionary does not define, apart from benzene rings numbered by locants.
 - Polymer repeat units such as `[CH2CH2]n`.
 
 ## 2. Normalization
@@ -56,6 +59,7 @@ The input is split into components at `.` first. Each component is lexed into a 
 | Marker | `-` `=` `#` at the start or end of a component | An open valence of that order |
 | Charge | `+`; `-` at the end of a component; `^` followed by an optional count and a sign | |
 | Descriptor | At the start of a component: `(E)-`, `(Z)-`, `(R)-`, `(S)-`, any parenthesized list of those letters or `+` `-` `±` separated by commas followed by `-`, and `cis-`, `trans-`, `rac-` | Skipped, warning CF0301 |
+| Locant | At the start of a component, after a descriptor, an open bracket or a bond sign: digits separated by commas, or `o`, `m` or `p`, then `-` and more input | `4-`, `2,4-`, `p-`. Section 6.11. Its digits are not also a count. A longer dictionary spelling that starts there, such as `p-Tol`, replaces it |
 
 A trailing `-` emits both a Marker edge and a Charge edge. Every other character position must be covered by at least one edge.
 
@@ -77,16 +81,23 @@ Every edge carries an integer prior. Priors only order readings that survive val
 | Folded element | -4, plus -2 if outside the organic set |
 | Isotope hydrogen | -1 |
 | Abbreviation | +1 |
-| Descriptor, count, bond, group, charge | 0 |
+| Descriptor, locant, count, bond, group, charge | 0 |
 
 ## 4. Surface grammar
 
 ```
 formula    = component , { "." , component } ;
 component  = [ descriptor ] , [ count ] , [ marker ] , unit-seq , [ trail ] ;
-unit-seq   = unit , { [ bond ] , unit } ;
+unit-seq   = ( arene | unit ) , { [ bond ] , unit } ;
 unit       = ( atom | abbreviation | group ) , [ count ] ;
 group      = open , [ bond ] , unit-seq , close ;
+arene      = substituent , { "-" , substituent } , [ bond ] , ring
+           | locant , ring ;
+substituent = locant , unit , { [ bond ] , unit } ;
+ring       = "C6H" , [ "2" | "3" | "4" ] ;
+locant     = position , { "," , position } , "-"
+           | ( "o" | "m" | "p" ) , "-" ;
+position   = "1" | "2" | "3" | "4" | "5" | "6" ;
 trail      = charge | marker ;
 charge     = [ count ] , ( "+" | "-" )
            | "^" , [ count ] , ( "+" | "-" ) ;
@@ -96,6 +107,8 @@ open       = "(" | "[" ;
 close      = ")" | "]" ;
 count      = digit , { digit } ;
 ```
+
+An arene starts the sequence of a group, or of a component with no leading marker. A component count cannot come before an arene, since its digits would run into the locant's. Each substituent ends at a `-` followed by a locant, or at the ring: the first carbon with count 6 directly followed by hydrogen with a count of 4 or less. Units after the ring, including later `C6H4`s, are read as usual.
 
 The grammar is deliberately permissive. Parsing is a chart parse over the lattice and its result is a parse forest: one tree per combination of lattice path and grammatical choice. The grammatical choices are:
 
@@ -116,6 +129,7 @@ Syntax errors:
 | CF0105 | A token appears where the grammar does not allow it |
 | CF0106 | A group is empty |
 | CF0107 | A count of zero or above 100, or a charge of zero or above 8 |
+| CF0108 | Locants that do not fit their ring (section 6.11) |
 
 ## 5. Valence model
 
@@ -199,7 +213,7 @@ Every bond between two units gets an order. An explicit bond token fixes it. Oth
 A carbon atom with a count of 2 or more, such as `C2H5` or `C6H12O6`, carries no connectivity. Unless a dictionary spelling covers the span, the tree is `Underdetermined`. The bundled dictionary spells out the conventional readings of a few formulas: `C2H5` is ethyl, `C6H5` is phenyl and `C6H6` is benzene. Formulas with no single conventional reading, such as `C3H7`, stay underdetermined:
 
 - Reason `MolecularFormula` when the span is the whole component, or when its degree of unsaturation is zero.
-- Reason `UnknownRing` when it sits between other units and its degree of unsaturation is above zero, as in the `C6H4` of `CH3C6H4CH3`.
+- Reason `UnknownRing` when it sits between other units and its degree of unsaturation is above zero, as in the `C6H4` of `CH3C6H4CH3`. Locants number such a ring (section 6.11).
 
 The degree of unsaturation of `Cn Hm` with `k` neighbouring units is `(2n + 2 - m - k) / 2`.
 
@@ -226,6 +240,36 @@ When no tree of a component yields a molecule, and the component begins with one
 - **Charge representation.** By default a neutral nitrogen with bond order sum 5 and a double-bonded oxygen is rewritten as `[N+]` with a single-bonded `[O-]`, so `CH3NO2` reads `C[N+](=O)[O-]`. The hypervalent convention does the reverse. The convention in force is recorded on every reading it changes.
 - **Hydrogens.** A hydrogen bonded to exactly one heavy atom becomes an implicit hydrogen of that atom.
 - **Multi-component.** A leading count repeats its component. Components keep their input order in the molecule.
+
+### 6.11 Numbered benzene rings
+
+A locant numbers the ring of its arene (section 4): a unit written `C6H4`, `C6H3`, `C6H2` or `C6H`, read as benzene. The ring's **substituted positions** are the ones without hydrogen: two for `C6H4`, three for `C6H3`, four for `C6H2` and five for `C6H`.
+
+**Substituents.** Each substituent is assembled like a group (section 6.2), so the `MeO` of `4-MeOC6H4CHO` is a methoxy group and the `O2N` of `4-O2NC6H4OH` a nitro group. A substituent that is one counted unit, such as `Cl2`, `Me3` or `(MeO)2`, puts one copy at each position its locant lists, so the count must equal the number of positions. Any other substituent lists one position. Each copy bonds to the ring by its first open atom. A bond written before the ring, as in `4-MeO-C6H4`, sets the order of the last substituent's bond.
+
+**Position 1.**
+
+- When no substituent lists position 1, it is left for the units after the ring. The listed positions and position 1 must then be exactly the substituted positions. `4-MeOC6H4CHO` bonds the formyl group at position 1, and `2,4-Cl2C6H3CO2H` and `2-Cl-4-FC6H3CHO` put their substituents at 2 and 4.
+- When a substituent lists position 1, the substituents must fill every substituted position, and nothing bonds after the ring: `1,4-Cl2C6H4`, `1,3,5-Me3C6H3`.
+- A locant directly before the ring, with no substituent, is the only locant of the ring. It lists the positions the units after the ring bond to, and must list every substituted position: `1,4-C6H4(OH)2`, `1,3,5-C6H3(CO2H)3`.
+
+**Ortho, meta and para.** `o-`, `m-` and `p-` place the two substituents of a `C6H4` ring at positions 1 and 2, 1 and 3, or 1 and 4, and are the only locant of their ring. A substituent with one copy takes the second position, so `p-MeC6H4OH` is 4-methylphenol. A substituent with two copies, as in `p-Cl2C6H4`, or a locant directly before the ring, as in `p-C6H4(CO2Me)2`, takes both.
+
+**After the ring.** The positions left for later units are pushed on the host stack lowest on top, so the next unit bonds to the lowest one, and the host search steps back to the next once it is filled. A counted unit whose host is one of these positions puts one copy on each open position of that ring, lowest first, instead of all on one atom: `o-C6H4(CO2H)2` is phthalic acid and `o-C6H4Cl2` is 1,2-dichlorobenzene.
+
+Bonds from substituents to their ring are backward under section 7.4. Bonds from the ring to later units are forward. A ring with no locant stays underdetermined under section 6.6, so `CH3C6H4CH3` still names no isomer.
+
+**Errors.** CF0108 reports a locant that:
+
+- has no ring after it in its sequence;
+- lists a position that is not a single digit from 1 to 6, or one position twice;
+- lists a different number of positions than its substituent has copies;
+- with the other locants of its ring, does not number exactly the substituted positions as above;
+- is `o-`, `m-` or `p-` on a ring other than `C6H4`, or beside another locant;
+- stands directly before the ring after other substituents;
+- leaves no open position on its ring while more units follow the ring.
+
+Not covered: locants on other rings, such as the `2-C5H4N` of 2-pyridyl, and locants written after the ring, such as `C6H4-4-OMe`.
 
 ## 7. Interpretation
 

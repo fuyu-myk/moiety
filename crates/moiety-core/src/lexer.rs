@@ -20,6 +20,17 @@ pub enum Bracket {
     Square,
 }
 
+/// Ring positions written before a benzene ring, such as `4-`, `2,4-` or `p-`
+/// (grammar, section 6.11).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Locant {
+    /// Numbered positions as a bit set, bit 0 for position 1. Zero marks a list
+    /// with a position outside 1 to 6 or one position twice.
+    Positions(u8),
+    /// `o-`, `m-` or `p-`: positions 1 and 2, 3 or 4.
+    Relative(u8),
+}
+
 /// What a lattice edge could be.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EdgeKind {
@@ -55,6 +66,8 @@ pub enum EdgeKind {
     Charge(i32),
     /// A stereo descriptor such as `(E)-`.
     Descriptor,
+    /// Ring positions such as `4-`, `2,4-` or `p-`.
+    Locant(Locant),
 }
 
 /// One token that could occupy a span of the input.
@@ -178,6 +191,7 @@ impl Lattice {
 /// Returns the first stretch of input that no complete tokenization covers.
 pub fn lex(text: &str, span: Span, dictionary: &Dictionary) -> Result<Lattice, Uncovered> {
     let component = &text[span.start..span.end];
+    let descriptor = descriptor_len(component);
     let mut edges = Vec::new();
     for (pos, c) in component.char_indices() {
         let at = |len: usize| Span::new(span.start + pos, span.start + pos + len);
@@ -185,11 +199,25 @@ pub fn lex(text: &str, span: Span, dictionary: &Dictionary) -> Result<Lattice, U
         let first = pos == 0;
         let last = pos + c.len_utf8() == component.len();
         if first {
-            if let Some(len) = descriptor_len(rest) {
+            if let Some(len) = descriptor {
                 edges.push(edge(at(len), EdgeKind::Descriptor));
             }
         }
-        for found in dictionary.matches_at(component, pos) {
+        let spellings = dictionary.matches_at(component, pos);
+        let locant_allowed = first
+            || descriptor == Some(pos)
+            || matches!(
+                component.as_bytes()[pos - 1],
+                b'(' | b'[' | b'-' | b'=' | b'#'
+            );
+        let numbered = match locant_allowed.then(|| locant(rest)).flatten() {
+            Some((len, value)) if spellings.iter().all(|s| s.len <= len) => {
+                edges.push(edge(at(len), EdgeKind::Locant(value)));
+                matches!(value, Locant::Positions(_))
+            }
+            _ => false,
+        };
+        for found in spellings {
             edges.push(edge(
                 at(found.len),
                 EdgeKind::Abbreviation {
@@ -202,7 +230,7 @@ pub fn lex(text: &str, span: Span, dictionary: &Dictionary) -> Result<Lattice, U
             'A'..='Z' => element_edges(rest, at, &mut edges),
             '0'..='9' => {
                 let previous_is_digit = pos > 0 && component.as_bytes()[pos - 1].is_ascii_digit();
-                if !previous_is_digit {
+                if !previous_is_digit && !numbered {
                     let len = rest.bytes().take_while(u8::is_ascii_digit).count();
                     let value = rest[..len].parse::<u32>().unwrap_or(u32::MAX);
                     edges.push(edge(at(len), EdgeKind::Count(value)));
@@ -317,6 +345,43 @@ fn caret_charge(rest: &str) -> Option<(usize, i32)> {
         _ => return None,
     };
     Some((digits + 2, sign * magnitude))
+}
+
+/// The length and value of a locant at the start of `rest`, which must be
+/// followed by more input. The digits of a numbered locant are never also a
+/// count: a count there could only be followed by a bond, which the grammar rejects.
+fn locant(rest: &str) -> Option<(usize, Locant)> {
+    let bytes = rest.as_bytes();
+    if let [letter @ (b'o' | b'm' | b'p'), b'-', _, ..] = bytes {
+        let partner = match letter {
+            b'o' => 2,
+            b'm' => 3,
+            _ => 4,
+        };
+        return Some((2, Locant::Relative(partner)));
+    }
+    let len = bytes
+        .iter()
+        .take_while(|b| b.is_ascii_digit() || **b == b',')
+        .count();
+    if len == 0 || bytes.get(len) != Some(&b'-') || bytes.len() == len + 1 {
+        return None;
+    }
+    let mut positions = 0u8;
+    let mut valid = true;
+    for part in rest[..len].split(',') {
+        match part.as_bytes() {
+            [] => return None,
+            [digit @ b'1'..=b'6'] if positions & (1 << (digit - b'1')) == 0 => {
+                positions |= 1 << (digit - b'1');
+            }
+            _ => valid = false,
+        }
+    }
+    Some((
+        len + 1,
+        Locant::Positions(if valid { positions } else { 0 }),
+    ))
 }
 
 fn descriptor_len(rest: &str) -> Option<usize> {
@@ -469,6 +534,7 @@ mod tests {
         };
         add(&mut d, "tosyl", "*S(=O)(=O)c1ccc(C)cc1", &["Ts"]);
         add(&mut d, "tert-butyl", "*C(C)(C)C", &["t-Bu"]);
+        add(&mut d, "p-tolyl", "*c1ccc(C)cc1", &["p-Tol"]);
         d
     }
 
@@ -530,6 +596,51 @@ mod tests {
         assert!(l.edges().iter().any(|e| e.kind == EdgeKind::Count(12)));
         assert!(!l.edges().iter().any(|e| e.kind == EdgeKind::Count(1)));
         assert!(lattice("t-BuOH").paths(10).0.len() == 1);
+    }
+
+    #[test]
+    fn reads_locants_where_a_sequence_starts() {
+        let kinds = |text: &str| -> Vec<EdgeKind> {
+            lattice(text).edges().iter().map(|e| e.kind).collect()
+        };
+        assert_eq!(
+            kinds("2,4-Cl2C6H3Br")[0],
+            EdgeKind::Locant(Locant::Positions(0b1010))
+        );
+        assert_eq!(
+            kinds("p-ClC6H4OH")[0],
+            EdgeKind::Locant(Locant::Relative(4))
+        );
+        assert!(kinds("(4-ClC6H4)3P").contains(&EdgeKind::Locant(Locant::Positions(0b1000))));
+        assert!(kinds("2-Cl-4-FC6H3CHO").contains(&EdgeKind::Locant(Locant::Positions(0b1000))));
+        assert_eq!(
+            kinds("2,2-Cl2C6H4")[0],
+            EdgeKind::Locant(Locant::Positions(0))
+        );
+        assert_eq!(
+            kinds("7-ClC6H4OH")[0],
+            EdgeKind::Locant(Locant::Positions(0))
+        );
+        assert!(
+            !lattice("4-ClC6H4OH")
+                .edges()
+                .iter()
+                .any(|e| e.span.start == 0 && matches!(e.kind, EdgeKind::Count(_)))
+        );
+        assert!(
+            !kinds("CH3CH2-")
+                .iter()
+                .any(|k| matches!(k, EdgeKind::Locant(_)))
+        );
+        assert!(
+            !kinds("p-TolC6H4OH")
+                .iter()
+                .any(|k| matches!(k, EdgeKind::Locant(_)))
+        );
+        assert_eq!(
+            kinds("02-ClC6H4OH")[0],
+            EdgeKind::Locant(Locant::Positions(0))
+        );
     }
 
     #[test]

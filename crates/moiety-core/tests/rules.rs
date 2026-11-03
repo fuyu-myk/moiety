@@ -241,6 +241,57 @@ fn readings_are_limited_in_size() {
 }
 
 #[test]
+fn locants_number_benzene_rings() {
+    reads_as("4-CH3OC6H4CHO", "COc1ccc(C=O)cc1");
+    reads_as("4-CH3O-C6H4-CHO", "COc1ccc(C=O)cc1");
+    reads_as("p-CH3C6H4OH", "Cc1ccc(O)cc1");
+    reads_as("o-CH3C6H4OH", "Cc1ccccc1O");
+    reads_as("m-CH3C6H4OH", "Cc1cccc(O)c1");
+    reads_as("2,4-Cl2C6H3COOH", "OC(=O)c1ccc(Cl)cc1Cl");
+    reads_as("3,5-(CF3)2C6H3Br", "FC(F)(F)c1cc(Br)cc(C(F)(F)F)c1");
+    reads_as("2-Cl-4-FC6H3CHO", "O=Cc1ccc(F)cc1Cl");
+    reads_as("(4-ClC6H4)3P", "Clc1ccc(P(c2ccc(Cl)cc2)c2ccc(Cl)cc2)cc1");
+    reads_as("4-(4-ClC6H4)C6H4OH", "Oc1ccc(-c2ccc(Cl)cc2)cc1");
+}
+
+#[test]
+fn locants_can_fill_every_position() {
+    reads_as("1,4-Cl2C6H4", "Clc1ccc(Cl)cc1");
+    reads_as("p-Cl2C6H4", "Clc1ccc(Cl)cc1");
+    reads_as("1,3,5-(CH3)3C6H3", "Cc1cc(C)cc(C)c1");
+    reads_as("o-C6H4(COOH)2", "OC(=O)c1ccccc1C(=O)O");
+    reads_as("1,4-C6H4(OH)2", "Oc1ccc(O)cc1");
+    reads_as("1,3,5-C6H3(COOH)3", "OC(=O)c1cc(C(=O)O)cc(C(=O)O)c1");
+    reads_as("p-C6H4(CH3)OH", "Cc1ccc(O)cc1");
+    reads_as("o-C6H4Cl2", "Clc1ccccc1Cl");
+}
+
+#[test]
+fn locants_must_fit_their_ring() {
+    for input in [
+        "4-CH3OH",
+        "7-ClC6H4OH",
+        "2,2-Cl2C6H3OH",
+        "2,4-ClC6H3COOH",
+        "4-CH3C6H3OH",
+        "1,2-Cl2C6H3OH",
+        "m-Cl2C6H3OH",
+        "p-Cl-2-FC6H3OH",
+        "2-Cl-1,4-C6H3(OH)2",
+        "1,2,4-C6H4(OH)2",
+        "1,4-Cl2C6H4OH",
+        "02-ClC6H4OH",
+    ] {
+        assert_eq!(error_code(input), Code::LocantMismatch, "{input}");
+    }
+    let reason = match read("CH3C6H4CH3") {
+        Interpretation::Underdetermined { reason, .. } => reason,
+        other => panic!("expected underdetermined, got {}", other.kind()),
+    };
+    assert_eq!(reason, Underdetermination::UnknownRing);
+}
+
+#[test]
 fn pathological_inputs_stop_at_the_search_limit() {
     let quick = Options {
         suggestions: false,

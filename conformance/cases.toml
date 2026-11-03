@@ -17,7 +17,7 @@
 [suite]
 name = "moiety-conformance"
 version = "0.3.0"
-grammar = 1
+grammar = 2
 ranking = 2
 
 # Chains and branches
@@ -386,6 +386,209 @@ input = "C$H4"
 expect = "invalid"
 code = "CF0101"
 span = [1, 2]
+
+# Benzene rings numbered by locants (grammar 2)
+
+[[case]]
+id = "locant/one-substituent"
+corpus = "curated"
+input = "4-MeOC6H4CHO"
+expect = "unique"
+smiles = ["COc1ccc(C=O)cc1"]
+
+[[case]]
+id = "locant/hyphenated"
+corpus = "curated"
+input = "4-MeO-C6H4-CHO"
+expect = "unique"
+smiles = ["COc1ccc(C=O)cc1"]
+
+[[case]]
+id = "locant/ortho"
+corpus = "curated"
+input = "o-ClC6H4CO2H"
+expect = "unique"
+smiles = ["OC(=O)c1ccccc1Cl"]
+
+[[case]]
+id = "locant/meta"
+corpus = "curated"
+input = "m-BrC6H4NH2"
+expect = "unique"
+smiles = ["Nc1cccc(Br)c1"]
+
+[[case]]
+id = "locant/para"
+corpus = "curated"
+input = "p-CH3C6H4OH"
+expect = "unique"
+smiles = ["Cc1ccc(O)cc1"]
+
+[[case]]
+id = "locant/two-copies"
+corpus = "curated"
+input = "2,4-Cl2C6H3CO2H"
+expect = "unique"
+smiles = ["OC(=O)c1ccc(Cl)cc1Cl"]
+
+[[case]]
+id = "locant/repeated-group"
+corpus = "curated"
+input = "3,4-(MeO)2C6H3CHO"
+expect = "unique"
+smiles = ["COc1ccc(C=O)cc1OC"]
+
+[[case]]
+id = "locant/three-copies"
+corpus = "curated"
+input = "2,4,6-Me3C6H2OH"
+expect = "unique"
+smiles = ["Cc1cc(C)c(O)c(C)c1"]
+
+[[case]]
+id = "locant/per-substituent"
+corpus = "curated"
+input = "2-Cl-4-FC6H3CHO"
+expect = "unique"
+smiles = ["O=Cc1ccc(F)cc1Cl"]
+
+[[case]]
+id = "locant/inside-group"
+corpus = "curated"
+input = "(4-ClC6H4)3P"
+expect = "unique"
+smiles = ["Clc1ccc(P(c2ccc(Cl)cc2)c2ccc(Cl)cc2)cc1"]
+
+[[case]]
+id = "locant/nested"
+corpus = "curated"
+input = "4-(4-ClC6H4)C6H4OH"
+expect = "unique"
+smiles = ["Oc1ccc(-c2ccc(Cl)cc2)cc1"]
+
+[[case]]
+id = "locant/every-position"
+corpus = "curated"
+input = "1,4-Cl2C6H4"
+expect = "unique"
+smiles = ["Clc1ccc(Cl)cc1"]
+
+[[case]]
+id = "locant/on-the-ring"
+corpus = "curated"
+input = "o-C6H4(CO2H)2"
+expect = "unique"
+smiles = ["OC(=O)c1ccccc1C(=O)O"]
+
+[[case]]
+id = "locant/on-the-ring-numbered"
+corpus = "curated"
+input = "1,3,5-C6H3(CO2H)3"
+expect = "unique"
+smiles = ["OC(=O)c1cc(C(=O)O)cc(C(=O)O)c1"]
+
+[[case]]
+id = "locant/after-descriptor"
+corpus = "curated"
+input = "(E)-4-MeOC6H4CH=CHCO2H"
+expect = "unique"
+smiles = ["COc1ccc(C=CC(=O)O)cc1"]
+warnings = ["CF0301"]
+
+[[case]]
+id = "locant/nitro-or-nitrite"
+corpus = "curated"
+input = "4-O2NC6H4OH"
+expect = "ambiguous"
+smiles = ["O=[N+]([O-])c1ccc(O)cc1", "O=NOc1ccc(O)cc1"]
+classes = ["branch-point-fork"]
+
+[[case]]
+id = "locant/no-ring"
+corpus = "adversarial"
+input = "4-MeOH"
+expect = "invalid"
+code = "CF0108"
+span = [0, 2]
+
+[[case]]
+id = "locant/out-of-range"
+corpus = "adversarial"
+input = "7-ClC6H4OH"
+expect = "invalid"
+code = "CF0108"
+span = [0, 2]
+
+[[case]]
+id = "locant/repeated-position"
+corpus = "adversarial"
+input = "2,2-Cl2C6H4"
+expect = "invalid"
+code = "CF0108"
+span = [0, 4]
+
+[[case]]
+id = "locant/copies-mismatch"
+corpus = "adversarial"
+input = "2,4-ClC6H3CO2H"
+expect = "invalid"
+code = "CF0108"
+span = [0, 4]
+
+[[case]]
+id = "locant/too-few-positions"
+corpus = "adversarial"
+input = "4-MeC6H3OH"
+expect = "invalid"
+code = "CF0108"
+span = [4, 8]
+
+[[case]]
+id = "locant/no-open-position"
+corpus = "adversarial"
+input = "1,4-Cl2C6H4OH"
+expect = "invalid"
+code = "CF0108"
+span = [0, 11]
+
+[[case]]
+id = "locant/dictionary-spelling-wins"
+corpus = "adversarial"
+input = "p-TolCH2C6H4OH"
+expect = "underdetermined"
+reason = "unknown-ring"
+span = [8, 12]
+
+[[case]]
+id = "locant/counted-atom-spreads"
+corpus = "curated"
+input = "o-C6H4Cl2"
+expect = "unique"
+smiles = ["Clc1ccccc1Cl"]
+
+[[case]]
+id = "locant/relative-on-c6h3"
+corpus = "adversarial"
+input = "m-Cl2C6H3OH"
+expect = "invalid"
+code = "CF0108"
+span = [0, 2]
+
+[[case]]
+id = "locant/bare-after-substituent"
+corpus = "adversarial"
+input = "2-Cl-1,4-C6H3(OH)2"
+expect = "invalid"
+code = "CF0108"
+span = [5, 9]
+
+[[case]]
+id = "locant/mid-chain"
+corpus = "adversarial"
+input = "CH3-4-ClC6H4OH"
+expect = "invalid"
+code = "CF0105"
+span = [4, 6]
 
 # Generated in bulk below from hand-checked tables.
 

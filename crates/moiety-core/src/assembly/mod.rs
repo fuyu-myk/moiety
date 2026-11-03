@@ -293,6 +293,7 @@ fn attachment(order: BondOrder, span: Span) -> AAtom {
         reversed_site: false,
         budget_charge: false,
         hydrogenated: false,
+        numbered: None,
     }
 }
 
@@ -378,6 +379,10 @@ fn future_atoms(seq: &Seq) -> Vec<u32> {
         let per_copy = match &item.unit.kind {
             UnitKind::Atom { .. } | UnitKind::Abbreviation { .. } => 1,
             UnitKind::Group { seq, .. } => future_atoms(seq)[0],
+            UnitKind::Arene(arene) => arene.substituents.iter().fold(6, |sum: u32, s| {
+                let copies = u32::try_from(s.positions.len()).unwrap_or(u32::MAX);
+                sum.saturating_add(future_atoms(&s.seq)[0].saturating_mul(copies))
+            }),
         };
         sums[i] = sums[i + 1].saturating_add(per_copy.saturating_mul(item.unit.count()));
     }
@@ -452,8 +457,11 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                 ctx.fail(no_host(&state, unit.span, ctx.component_end));
                 return Vec::new();
             };
+            let hosts = state
+                .numbered_hosts(host, heads.len())
+                .unwrap_or_else(|| vec![host; heads.len()]);
             let room = state.atoms[host].free();
-            if usize::from(room) < heads.len() {
+            if hosts[0] == hosts[hosts.len() - 1] && usize::from(room) < heads.len() {
                 ctx.fail(
                     Failure::new(
                         Code::HostFull,
@@ -469,7 +477,7 @@ fn attach(mut state: State, piece: Piece, item: &Item, ctx: &mut Ctx<'_>) -> Vec
                 );
                 return Vec::new();
             }
-            let bonded = bond_all(state, host, &heads, bond, ctx);
+            let bonded = bond_pairs(state, &hosts, &heads, bond, ctx);
             if bonded.is_empty() {
                 ctx.fail(bond_failure(unit.span, bond.map(|b| b.1)));
             }
@@ -579,8 +587,19 @@ fn bond_all(
     bond: Option<(BondOrder, Span)>,
     ctx: &mut Ctx<'_>,
 ) -> Vec<State> {
+    bond_pairs(state, &vec![center; heads.len()], heads, bond, ctx)
+}
+
+/// Bonds each head to the center at the same index, in every combination of orders.
+fn bond_pairs(
+    state: State,
+    centers: &[usize],
+    heads: &[usize],
+    bond: Option<(BondOrder, Span)>,
+    ctx: &mut Ctx<'_>,
+) -> Vec<State> {
     let mut partial = vec![state];
-    for &head in heads {
+    for (&center, &head) in centers.iter().zip(heads) {
         let mut next = Vec::new();
         for s in partial {
             for k in s.orders(center, head, bond.map(|b| b.0)) {
