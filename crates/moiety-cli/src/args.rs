@@ -25,6 +25,7 @@ options:
   --seed <n>               seed for generated molecules (default 2026)
   --adjudications <file>   recorded verdicts (default conformance/differential/adjudications.toml)
   -h, --help               show this help
+  -V, --version            show the version
 ";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +38,7 @@ pub enum Command {
     Differential,
     Dictionary,
     Help,
+    Version,
 }
 
 #[derive(Debug)]
@@ -58,6 +60,7 @@ pub fn parse(argv: &[String]) -> Result<Args> {
     let mut iter = argv.iter();
     let command = match iter.next().map(String::as_str) {
         None | Some("-h" | "--help" | "help") => Command::Help,
+        Some("-V" | "--version" | "version") => Command::Version,
         Some("parse") => Command::Parse,
         Some("write") => Command::Write,
         Some("draw") => Command::Draw,
@@ -88,6 +91,7 @@ pub fn parse(argv: &[String]) -> Result<Args> {
         };
         match arg.as_str() {
             "-h" | "--help" => args.command = Command::Help,
+            "-V" | "--version" => args.command = Command::Version,
             "--dictionary" => args.dictionary = Some(value(arg)?.into()),
             "--hypervalent" => args.hypervalent = true,
             "--reading" => args.reading = number(&value(arg)?, arg)?,
@@ -139,6 +143,8 @@ mod tests {
         assert_eq!(parsed.reading, 2);
         assert_eq!(parsed.output, Some(PathBuf::from("out.svg")));
         assert_eq!(args(&[]).unwrap().command, Command::Help);
+        assert_eq!(args(&["--version"]).unwrap().command, Command::Version);
+        assert_eq!(args(&["parse", "-V"]).unwrap().command, Command::Version);
     }
 
     #[test]

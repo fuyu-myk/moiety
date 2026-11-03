@@ -28,6 +28,10 @@ pub fn run(args: Args) -> Result<ExitCode> {
             print!("{USAGE}");
             Ok(ExitCode::SUCCESS)
         }
+        Command::Version => {
+            println!("moiety {}", env!("CARGO_PKG_VERSION"));
+            Ok(ExitCode::SUCCESS)
+        }
         Command::Parse => parse(&args, &dictionary, &options),
         Command::Write => write(&args, &dictionary),
         Command::Draw | Command::Html => draw(&args, &dictionary, &options),
