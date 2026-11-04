@@ -9,12 +9,20 @@ Grammar version 4.
 ### Added
 
 - Template rings take bracketed locants and locants after their substituents, as benzene does. They must fill every substituted position, with nothing before the ring: `C5H3N(2-Cl)(6-Cl)`, `C9H6N(8-OH)`, `C5H3NCl2-2,6`, `C5H3NCl-2-CH3-6` (grammar section 6.12).
+- Drawing from SMILES: `moiety draw --smiles`, `moiety_draw::render_smiles_fragment`, the wasm export `moiety_render_smiles`, and a Formula/SMILES switch in the playground with SMILES examples.
+- The SMILES reader keeps stereochemistry: tetrahedral centres written `@`, `@@`, `@TH1` or `@TH2`, and double bond configurations from bonds written `/` and `\`, as `Molecule::tetrahedral` and `Molecule::double_bond_stereo` with the new `Tetrahedral` and `DoubleBondStereo`. Canonical SMILES still leaves stereo out.
+- Drawings from SMILES show each tetrahedral stereocentre with one wedge or hash, and draw every double bond with the configuration the SMILES gave, in chains and in macrocycles.
+- Macrocycles of 12 to 46 atoms are drawn as closed zig-zags on a hexagonal lattice, as chemists draw them, with fused rings and the largest substituents outside and an odd ring's one irregular bond away from substituents: erythromycin, tacrolimus and rapamycin look like their usual drawings.
+- Porphyrins, the morphine skeleton and norbornanes take fixed drawings from PubChem's depictions.
+- The `smiles` fuzz target.
 
 ### Changed
 
 - A bracket that starts with a locant after a template ring now holds bracketed substituents, as it does after benzene, and a phenyl spelling in it is part of the substituent. So `C5H4N(2-OPh)` reads as 2-phenoxypyridine, and `C5H4N(4-ClPh)` is an error, as `C6H4(4-ClPh)` already was, instead of an underdetermined ring.
 - Units after a template ring whose brackets fill it, as in `C5H4N(2-Cl)CH3`, get CF0108 at the ring instead of CF0204.
 - A locant that lists a position whose atom cannot take a substituent suggests the nearest position with the same element that can: `3-MeC3H3N2` suggests `1-MeC3H3N2`, the nitrogen that holds a hydrogen.
+- Bridged ring systems are drawn without crossing bonds where the convention has none: a bridge across a ring is an arc or a shallow bow, chosen with the substituents in mind, and a system that still draws badly is started from another ring or relaxed, whichever is most legible. Bicyclo[2.2.2]octanes, quinuclidines, tropanes, artemisinin and cryptands no longer cross.
+- `layout` no longer keeps every bond one unit long: bridges may be shorter and templates follow their source, within 0.55 to 1.6.
 
 ## 0.5.0 - 2026-11-03
 

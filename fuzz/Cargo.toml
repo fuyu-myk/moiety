@@ -22,3 +22,9 @@ bench = false
 # Kept out of the main workspace: fuzzing needs a nightly toolchain.
 [workspace]
 members = ["."]
+
+[[bin]]
+name = "smiles"
+path = "fuzz_targets/smiles.rs"
+test = false
+doc = false
