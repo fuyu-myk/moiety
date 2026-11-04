@@ -12,13 +12,16 @@
 //!   when no Kekulé structure exists;
 //! - an attachment point is a short wavy line across the end of its bond;
 //! - a tetrahedral stereocentre from SMILES gets one wedge or hash, narrow at
-//!   the centre, that shows its configuration.
+//!   the centre, that shows its configuration; where fused rings meet, the
+//!   wedge or hash leads to a hydrogen drawn for it.
 //!
 //! A wedged bond is drawn as `<g class="bond single wedge">` or
 //! `<g class="bond single hash">`.
 //!
 //! Every atom is drawn as `<g class="atom" data-atom="i">` and every bond as
 //! `<g class="bond single" data-bond="j">` (or `double`, `triple`, `aromatic`).
+//! Hydrogens drawn at stereocentres come after the molecule's own atoms and
+//! bonds, numbered on from them.
 //! A drawing made from a [`Reading`] adds `data-span="start-end"` to both: the
 //! byte span of the original input the atom or bond came from. All strokes and
 //! fills use `currentColor`, so the drawing takes the text colour of the page
@@ -28,7 +31,7 @@ mod atom;
 mod bond;
 mod label;
 
-use moiety_core::{BondOrder, Molecule, Provenance, Reading, Span, aromatic};
+use moiety_core::{Atom, BondOrder, Element, Molecule, Provenance, Reading, Span, aromatic};
 
 use crate::layout::{Bounds, Layout, Point, layout};
 use crate::wedge::{Wedged, wedges};
@@ -121,14 +124,23 @@ struct Scene {
 impl Scene {
     fn new(molecule: &Molecule, metrics: Metrics) -> Self {
         let geometry = layout(molecule);
-        let wedges = wedges(molecule, geometry.positions());
-        let (drawable, circled_rings) = kekule(molecule, &geometry);
+        let marks = wedges(molecule, geometry.positions());
+        let (mut drawable, circled_rings) = kekule(molecule, &geometry);
+        let mut positions = geometry.positions().to_vec();
+        let mut wedges = marks.bonds;
+        for hydrogen in marks.hydrogens {
+            let atom = drawable.add_atom(Atom::new(Element::H));
+            let centre = &mut drawable.atoms_mut()[hydrogen.centre];
+            centre.hydrogens = centre.hydrogens.saturating_sub(1);
+            drawable.add_bond(hydrogen.centre, atom, BondOrder::Single);
+            positions.push(hydrogen.position);
+            wedges.push(Some(Wedged {
+                narrow: hydrogen.centre,
+                wedge: hydrogen.wedge,
+            }));
+        }
         let adjacency = drawable.adjacency();
-        let points: Vec<Point> = geometry
-            .positions()
-            .iter()
-            .map(|&p| p * metrics.bond)
-            .collect();
+        let points: Vec<Point> = positions.iter().map(|&p| p * metrics.bond).collect();
         let labels = label::labels(&drawable, &adjacency, &points, metrics.font);
         let ring_centres = (0..geometry.rings().len())
             .map(|index| geometry.ring_centre(index).unwrap_or_default() * metrics.bond)

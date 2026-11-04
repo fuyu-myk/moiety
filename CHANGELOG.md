@@ -12,6 +12,7 @@ Grammar version 4.
 - Drawing from SMILES: `moiety draw --smiles`, `moiety_draw::render_smiles_fragment`, the wasm export `moiety_render_smiles`, and a Formula/SMILES switch in the playground with SMILES examples.
 - The SMILES reader keeps stereochemistry: tetrahedral centres written `@`, `@@`, `@TH1` or `@TH2`, and double bond configurations from bonds written `/` and `\`, as `Molecule::tetrahedral` and `Molecule::double_bond_stereo` with the new `Tetrahedral` and `DoubleBondStereo`. Canonical SMILES still leaves stereo out.
 - Drawings from SMILES show each tetrahedral stereocentre with one wedge or hash, and draw every double bond with the configuration the SMILES gave, in chains and in macrocycles.
+- A stereocentre where fused rings meet shows its hydrogen on a short wedge or hash, as steroids, penicillins and tetracyclines are usually drawn: out of the rings, or into one standing upright when the hydrogens would crowd each other.
 - Macrocycles of 12 to 46 atoms are drawn as closed zig-zags on a hexagonal lattice, as chemists draw them, with fused rings and the largest substituents outside and an odd ring's one irregular bond away from substituents: erythromycin, tacrolimus and rapamycin look like their usual drawings.
 - Porphyrins, the morphine skeleton, norbornanes, taxanes and artemisinin take fixed drawings from PubChem's depictions, and steroids are drawn the usual way round, ring A at the lower left and the angular methyls up, whatever order their SMILES lists the atoms in.
 - The `smiles` fuzz target.

@@ -374,3 +374,17 @@ fn draws_one_wedge_or_hash_per_stereocentre() {
     );
     assert!(!flat.contains("wedge") && !flat.contains("hash"));
 }
+
+#[test]
+fn draws_the_hydrogens_where_fused_rings_meet() {
+    let molecule = moiety_core::smiles::parse("C1CC[C@H]2CCCC[C@@H]2C1").unwrap();
+    let svg = render_svg(&molecule, &SvgOptions::default());
+    assert_well_formed(&svg);
+    assert_eq!(svg.matches(">H</text>").count(), 2, "{svg}");
+    assert_eq!(svg.matches("bond single wedge").count(), 1);
+    assert_eq!(svg.matches("bond single hash").count(), 1);
+    assert!(
+        svg.contains("data-atom=\"11\""),
+        "the hydrogens follow the atoms"
+    );
+}
