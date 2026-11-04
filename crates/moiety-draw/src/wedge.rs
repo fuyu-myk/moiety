@@ -66,8 +66,10 @@ pub(crate) struct Marks {
 }
 
 /// The stereo marks of `molecule` drawn at `positions`, one unit per bond
-/// length with `y` downward.
-pub(crate) fn wedges(molecule: &Molecule, positions: &[Point]) -> Marks {
+/// length with `y` downward. Hydrogens are drawn where fused rings meet only
+/// when `hydrogens` is set, as a drawing with room for their labels has it;
+/// otherwise those centres wedge a ring bond.
+pub(crate) fn wedges(molecule: &Molecule, positions: &[Point], hydrogens: bool) -> Marks {
     let mut marks = Marks {
         bonds: vec![None; molecule.bonds().len()],
         hydrogens: Vec::new(),
@@ -78,7 +80,9 @@ pub(crate) fn wedges(molecule: &Molecule, positions: &[Point]) -> Marks {
     let adjacency = molecule.adjacency();
     let rings = RingInfo::new(molecule, &adjacency);
     let centres: Vec<usize> = molecule.tetrahedral().iter().map(|t| t.centre).collect();
-    marks.hydrogens = fusion_hydrogens(molecule, positions, &adjacency, &rings);
+    if hydrogens {
+        marks.hydrogens = fusion_hydrogens(molecule, positions, &adjacency, &rings);
+    }
     for stereo in molecule.tetrahedral() {
         if marks.hydrogens.iter().any(|h| h.centre == stereo.centre) {
             continue;
@@ -128,7 +132,8 @@ struct Site<'a> {
 
 impl<'a> Site<'a> {
     /// The site of `stereo`, if its centre has three ring bonds, a hydrogen,
-    /// and a ring of its own filling one of its angles.
+    /// a ring of its own filling one of its angles, and a direction for the
+    /// hydrogen clear of the other atoms.
     fn new(
         stereo: &'a Tetrahedral,
         molecule: &Molecule,
@@ -147,7 +152,7 @@ impl<'a> Site<'a> {
         }
         let origin = positions[centre];
         let gaps = gaps(centre, links, positions, rings);
-        if !gaps.iter().any(|gap| gap.0) {
+        if !gaps.iter().any(|gap| gap.filled) {
             return None;
         }
         let clear = |d: Point| {
@@ -155,14 +160,18 @@ impl<'a> Site<'a> {
                 i == centre || p.distance(origin + d * HYDROGEN_BOND) >= HYDROGEN_CLEARANCE
             })
         };
-        let mut options: Vec<Point> = gaps.iter().map(|gap| gap.1).filter(|&d| clear(d)).collect();
+        let options: Vec<Point> = gaps
+            .iter()
+            .map(|gap| gap.middle)
+            .filter(|&d| clear(d))
+            .collect();
         if options.is_empty() {
-            options.push(gaps[0].1);
+            return None;
         }
         let open = gaps
             .iter()
-            .filter(|gap| !gap.0)
-            .map(|gap| gap.2)
+            .filter(|gap| !gap.filled)
+            .map(|gap| gap.width)
             .fold(0.0, f64::max);
         Some(Self {
             stereo,
@@ -194,15 +203,25 @@ impl<'a> Site<'a> {
     }
 }
 
-/// The angles between the three neighbours of `centre`, as whether a ring
-/// fills it, the direction through its middle and its width: those no ring
-/// fills first, widest first, then the rest, nearest to vertical first.
+/// The angle between two neighbours of a stereocentre.
+#[derive(Clone, Copy, Debug)]
+struct Gap {
+    /// Whether a ring fills it.
+    filled: bool,
+    /// The unit vector through its middle.
+    middle: Point,
+    /// Its width in radians.
+    width: f64,
+}
+
+/// The angles between the three neighbours of `centre`: those no ring fills
+/// first, widest first, then the rest, nearest to vertical first.
 fn gaps(
     centre: usize,
     links: &[(usize, usize)],
     positions: &[Point],
     rings: &RingInfo,
-) -> Vec<(bool, Point, f64)> {
+) -> Vec<Gap> {
     let origin = positions[centre];
     let mut around: Vec<(usize, f64)> = links
         .iter()
@@ -210,18 +229,25 @@ fn gaps(
         .collect();
     around.sort_by(|a, b| a.1.total_cmp(&b.1));
     let count = around.len();
-    let mut gaps: Vec<(bool, Point, f64)> = (0..count)
+    let mut gaps: Vec<Gap> = (0..count)
         .map(|i| {
             let ((a, from), (b, to)) = (around[i], around[(i + 1) % count]);
             let width = (to - from).rem_euclid(std::f64::consts::TAU);
-            let middle = Point::from_angle(from + width / 2.0);
-            (rings.fills(a, centre, b), middle, width)
+            Gap {
+                filled: rings.fills(a, centre, b),
+                middle: Point::from_angle(from + width / 2.0),
+                width,
+            }
         })
         .collect();
-    let rank = |&(filled, middle, width): &(bool, Point, f64)| {
-        if filled { -middle.y.abs() } else { -width }
+    let rank = |gap: &Gap| {
+        if gap.filled {
+            -gap.middle.y.abs()
+        } else {
+            -gap.width
+        }
     };
-    gaps.sort_by(|x, y| x.0.cmp(&y.0).then(rank(x).total_cmp(&rank(y))));
+    gaps.sort_by(|x, y| x.filled.cmp(&y.filled).then(rank(x).total_cmp(&rank(y))));
     gaps
 }
 
@@ -390,7 +416,7 @@ mod tests {
             ("CC[C@H](C)O", Wedge::Hashed),
         ] {
             let molecule = smiles::parse(input).unwrap();
-            let wedged = wedges(&molecule, &positions).bonds;
+            let wedged = wedges(&molecule, &positions, true).bonds;
             assert_eq!(
                 wedged[oxygen_bond(&molecule)],
                 Some(Wedged { narrow: 2, wedge }),
@@ -413,9 +439,9 @@ mod tests {
             ..stereo
         });
         let drawn = crate::layout::layout(&parsed);
-        let first = wedges(&parsed, drawn.positions());
+        let first = wedges(&parsed, drawn.positions(), true);
         assert!(first.bonds.iter().flatten().count() == 1);
-        assert_eq!(first, wedges(&reordered, drawn.positions()));
+        assert_eq!(first, wedges(&reordered, drawn.positions(), true));
     }
 
     #[test]
@@ -427,7 +453,7 @@ mod tests {
             let molecule = smiles::parse(input).unwrap();
             let drawn = crate::layout::layout(&molecule);
             let p = drawn.positions();
-            let marks = wedges(&molecule, p);
+            let marks = wedges(&molecule, p, true);
             assert!(marks.bonds.iter().all(Option::is_none), "{input}");
             let kinds: Vec<Wedge> = marks.hydrogens.iter().map(|h| h.wedge).collect();
             assert_eq!(kinds.len(), 2, "{input}");
@@ -444,7 +470,36 @@ mod tests {
         }
         let camphor = smiles::parse("CC1(C)[C@@H]2CC[C@@]1(C)C(=O)C2").unwrap();
         let drawn = crate::layout::layout(&camphor);
-        assert!(wedges(&camphor, drawn.positions()).hydrogens.is_empty());
+        assert!(
+            wedges(&camphor, drawn.positions(), true)
+                .hydrogens
+                .is_empty()
+        );
+    }
+
+    /// Where no direction is clear of the other atoms, as in cubane's
+    /// perspective drawing, the centre keeps a wedged ring bond.
+    #[test]
+    fn draws_no_hydrogen_where_none_fits() {
+        let cubane = smiles::parse("[C@H]12[C@H]3[C@H]4[C@H]1[C@H]5[C@H]2[C@H]3[C@H]45").unwrap();
+        let drawn = crate::layout::layout(&cubane);
+        let p = drawn.positions();
+        let marks = wedges(&cubane, p, true);
+        for hydrogen in &marks.hydrogens {
+            assert!(
+                p.iter().enumerate().all(|(i, q)| {
+                    i == hydrogen.centre || q.distance(hydrogen.position) >= HYDROGEN_CLEARANCE
+                }),
+                "{hydrogen:?}"
+            );
+        }
+        let wedged: Vec<usize> = marks.bonds.iter().flatten().map(|w| w.narrow).collect();
+        assert_eq!(wedged.len() + marks.hydrogens.len(), 8);
+        let decalin = smiles::parse("C1CC[C@H]2CCCC[C@@H]2C1").unwrap();
+        let drawn = crate::layout::layout(&decalin);
+        let cramped = wedges(&decalin, drawn.positions(), false);
+        assert!(cramped.hydrogens.is_empty());
+        assert_eq!(cramped.bonds.iter().flatten().count(), 2);
     }
 
     /// Testosterone's hydrogens at C9, C8 and C14 stand upright, as in the usual
@@ -455,7 +510,7 @@ mod tests {
             smiles::parse("C[C@]12CC[C@H]3[C@H]([C@@H]1CC[C@@H]2O)CCC4=CC(=O)CC[C@]34C").unwrap();
         let drawn = crate::layout::layout(&molecule);
         let p = drawn.positions();
-        let marks = wedges(&molecule, p);
+        let marks = wedges(&molecule, p, true);
         let rise = |centre: usize| {
             let hydrogen = marks.hydrogens.iter().find(|h| h.centre == centre).unwrap();
             (p[centre].y - hydrogen.position.y) / HYDROGEN_BOND
@@ -473,15 +528,19 @@ mod tests {
     fn gives_each_centre_its_own_bond() {
         let molecule = smiles::parse("C[C@H](O)[C@@H](O)C").unwrap();
         let positions = crate::layout::layout(&molecule);
-        let wedged = wedges(&molecule, positions.positions()).bonds;
+        let wedged = wedges(&molecule, positions.positions(), true).bonds;
         let narrow: Vec<usize> = wedged.iter().flatten().map(|w| w.narrow).collect();
         assert_eq!(narrow.len(), 2);
         assert!(narrow.contains(&1) && narrow.contains(&3));
         assert!(
-            wedges(&smiles::parse("CC(O)CC").unwrap(), &[Point::default(); 5])
-                .bonds
-                .iter()
-                .all(Option::is_none)
+            wedges(
+                &smiles::parse("CC(O)CC").unwrap(),
+                &[Point::default(); 5],
+                true
+            )
+            .bonds
+            .iter()
+            .all(Option::is_none)
         );
     }
 }

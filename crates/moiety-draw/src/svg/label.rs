@@ -291,39 +291,28 @@ fn free_side(element: Element) -> Side {
 }
 
 /// The label of every atom, as [`Label::for_atom`] gives it, except that an
-/// atom whose hydrogens or charge would cover another label moves them to the
-/// opposite side, left for right or above for below, when its bonds leave that
-/// side free and nothing is covered there. Atoms are settled in order, each
-/// against the labels settled before it and the preferred labels of the rest.
+/// atom whose hydrogens would cover another label moves them to the opposite
+/// side, left for right or above for below, when its bonds leave that side
+/// free and nothing is covered there; a charge stays where it is. Atoms are
+/// settled in order, each against the labels settled before it and the
+/// preferred labels of the rest.
 pub(super) fn labels(
     molecule: &Molecule,
     adjacency: &Adjacency,
     points: &[Point],
     font: f64,
 ) -> Vec<Option<Label>> {
-    let preferred: Vec<Option<Label>> = (0..points.len())
+    let mut settled: Vec<Option<Label>> = (0..points.len())
         .map(|index| Label::for_atom(molecule, adjacency, points, index))
         .collect();
-    let mut settled = preferred.clone();
-    for (index, label) in preferred.iter().enumerate() {
-        let Some(label) = label.as_ref().filter(|l| l.hydrogens > 0 || l.charge != 0) else {
+    let mut boxes = Boxes::new(&settled, points, font);
+    for index in 0..points.len() {
+        let Some(label) = settled[index].clone().filter(|l| l.hydrogens > 0) else {
             continue;
         };
         if adjacency[index].is_empty() {
             continue;
         }
-        let others: Vec<Rect> = (0..points.len())
-            .filter(|&other| other != index)
-            .filter_map(|other| {
-                let label = if other < index {
-                    &settled[other]
-                } else {
-                    &preferred[other]
-                };
-                Some((other, label.as_ref()?))
-            })
-            .flat_map(|(other, label)| placed(label, points[other], font))
-            .collect();
         let clear = |side: Side| {
             let candidate = Label {
                 side,
@@ -331,18 +320,66 @@ pub(super) fn labels(
             };
             placed(&candidate, points[index], font)
                 .skip(1)
-                .all(|rect| !others.iter().any(|&other| overlaps(rect, other)))
+                .all(|rect| boxes.clear(points, index, rect))
         };
         let opposite = label.side.opposite();
         let free = free_sides(&directions(adjacency, points, index));
         if !clear(label.side) && free.contains(&opposite) && clear(opposite) {
-            settled[index] = Some(Label {
+            let moved = Label {
                 side: opposite,
-                ..label.clone()
-            });
+                ..label
+            };
+            boxes.rects[index] = placed(&moved, points[index], font).collect();
+            settled[index] = Some(moved);
         }
     }
     settled
+}
+
+/// The boxes of the labels of a drawing, with the labelled atoms ordered by
+/// `x` so that those near an atom are found without comparing every pair.
+struct Boxes {
+    rects: Vec<Vec<Rect>>,
+    by_x: Vec<usize>,
+    /// Labels whose atoms are further apart than this in `x` cannot touch.
+    reach: f64,
+}
+
+impl Boxes {
+    fn new(labels: &[Option<Label>], points: &[Point], font: f64) -> Self {
+        let rects: Vec<Vec<Rect>> = labels
+            .iter()
+            .enumerate()
+            .map(|(i, label)| {
+                label
+                    .as_ref()
+                    .map_or_else(Vec::new, |l| placed(l, points[i], font).collect())
+            })
+            .collect();
+        // No run reaches further from its atom than the whole label is wide.
+        let reach = 2.0
+            * rects
+                .iter()
+                .map(|boxes| boxes.iter().map(|(low, high)| high.x - low.x).sum::<f64>())
+                .fold(0.0, f64::max);
+        let mut by_x: Vec<usize> = (0..points.len())
+            .filter(|&i| !rects[i].is_empty())
+            .collect();
+        by_x.sort_by(|&a, &b| points[a].x.total_cmp(&points[b].x));
+        Self { rects, by_x, reach }
+    }
+
+    /// Whether `rect` overlaps no label but that of atom `index`.
+    fn clear(&self, points: &[Point], index: usize, rect: Rect) -> bool {
+        let x = points[index].x;
+        let first = self.by_x.partition_point(|&i| points[i].x < x - self.reach);
+        self.by_x[first..]
+            .iter()
+            .take_while(|&&i| points[i].x <= x + self.reach)
+            .filter(|&&i| i != index)
+            .flat_map(|&i| &self.rects[i])
+            .all(|&other| !overlaps(rect, other))
+    }
 }
 
 /// The boxes [`Label::keep_out`] gives for `label`, placed at `at`.

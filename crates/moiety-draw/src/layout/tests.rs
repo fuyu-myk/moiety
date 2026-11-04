@@ -546,24 +546,32 @@ fn steroids_are_drawn_the_usual_way_round() {
                 "{name}: ring D is not below the others"
             );
         }
-        let adjacency = molecule.adjacency();
-        for (atom, links) in adjacency.iter().enumerate() {
-            let &[(ring_atom, _)] = links.as_slice() else {
-                continue;
-            };
-            if adjacency[ring_atom].len() == 4
-                && molecule.atoms()[atom]
-                    .element()
-                    .is_some_and(|e| e.symbol() == "C")
-            {
-                assert!(
-                    (heading(&drawn, ring_atom, atom) + 90.0).abs() < 10.0,
-                    "{name}: the angular methyl {atom} points up, not {}",
-                    heading(&drawn, ring_atom, atom)
-                );
-            }
+        for (ring_atom, methyl) in angular_methyls(&molecule) {
+            let angle = heading(&drawn, ring_atom, methyl);
+            assert!(
+                (angle + 90.0).abs() < 10.0,
+                "{name}: the angular methyl {methyl} points up, not {angle}"
+            );
         }
     }
+}
+
+/// Each methyl on an atom with three other neighbours, with that atom.
+fn angular_methyls(molecule: &Molecule) -> Vec<(usize, usize)> {
+    let adjacency = molecule.adjacency();
+    adjacency
+        .iter()
+        .enumerate()
+        .filter_map(|(atom, links)| match links.as_slice() {
+            &[(hub, _)] if adjacency[hub].len() == 4 => Some((hub, atom)),
+            _ => None,
+        })
+        .filter(|&(_, atom)| {
+            molecule.atoms()[atom]
+                .element()
+                .is_some_and(|e| e.symbol() == "C")
+        })
+        .collect()
 }
 
 /// Paclitaxel takes PubChem's drawing, where the methyls of the bridging C15

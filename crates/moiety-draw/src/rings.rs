@@ -53,7 +53,7 @@ impl RingInfo {
                 atom_system[atom] = Some(index);
             }
         }
-        let corners = fused_corners(&rings);
+        let corners = fused_corners(&rings, &systems);
         Self {
             rings,
             systems,
@@ -80,7 +80,7 @@ impl RingInfo {
 
     /// The corners where a ring fills the angle at an atom, sorted, each as
     /// `(atom, lower neighbour, higher neighbour)`. Only rings that share at
-    /// most one bond with every other ring count: a bridged ring may be drawn
+    /// most two atoms with every other ring count: a bridged ring may be drawn
     /// in perspective, where its smallest rings are not the faces drawn.
     pub(crate) fn corners(&self) -> &[(usize, usize, usize)] {
         &self.corners
@@ -89,9 +89,7 @@ impl RingInfo {
     /// Whether a ring runs from `a` through `atom` to `b`, filling the angle
     /// between them, as [`RingInfo::corners`] counts them.
     pub(crate) fn fills(&self, a: usize, atom: usize, b: usize) -> bool {
-        self.corners
-            .binary_search(&(atom, a.min(b), a.max(b)))
-            .is_ok()
+        corner_between(&self.corners, a, atom, b)
     }
 
     /// Whether bond `index` lies on a cycle.
@@ -100,24 +98,36 @@ impl RingInfo {
     }
 }
 
+/// Whether the sorted `corners` hold the corner at `atom` between `a` and `b`.
+pub(crate) fn corner_between(
+    corners: &[(usize, usize, usize)],
+    a: usize,
+    atom: usize,
+    b: usize,
+) -> bool {
+    corners.binary_search(&(atom, a.min(b), a.max(b))).is_ok()
+}
+
 /// The corners of the rings that share at most two atoms with every other
-/// ring, sorted, as [`RingInfo::corners`] describes them.
-fn fused_corners(rings: &[Vec<usize>]) -> Vec<(usize, usize, usize)> {
+/// ring of their system, sorted, as [`RingInfo::corners`] describes them.
+fn fused_corners(rings: &[Vec<usize>], systems: &[RingSystem]) -> Vec<(usize, usize, usize)> {
     let shared = |a: &[usize], b: &[usize]| a.iter().filter(|atom| b.contains(atom)).count();
-    let mut corners: Vec<(usize, usize, usize)> = rings
+    let mut corners: Vec<(usize, usize, usize)> = systems
         .iter()
-        .enumerate()
-        .filter(|&(i, ring)| {
-            rings
-                .iter()
-                .enumerate()
-                .all(|(j, other)| i == j || shared(ring, other) <= 2)
+        .flat_map(|system| {
+            system.rings.iter().filter(|&&i| {
+                system
+                    .rings
+                    .iter()
+                    .all(|&j| i == j || shared(&rings[i], &rings[j]) <= 2)
+            })
         })
-        .flat_map(|(_, ring)| {
+        .flat_map(|&i| {
+            let ring = &rings[i];
             let n = ring.len();
-            (0..n).map(move |i| {
-                let (before, after) = (ring[(i + n - 1) % n], ring[(i + 1) % n]);
-                (ring[i], before.min(after), before.max(after))
+            (0..n).map(move |k| {
+                let (before, after) = (ring[(k + n - 1) % n], ring[(k + 1) % n]);
+                (ring[k], before.min(after), before.max(after))
             })
         })
         .collect();

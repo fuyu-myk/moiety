@@ -388,3 +388,16 @@ fn draws_the_hydrogens_where_fused_rings_meet() {
         "the hydrogens follow the atoms"
     );
 }
+
+#[test]
+fn small_drawings_wedge_a_ring_bond_instead() {
+    let molecule = moiety_core::smiles::parse("C1CC[C@H]2CCCC[C@@H]2C1").unwrap();
+    let options = SvgOptions {
+        bond_length: 20.0,
+        ..SvgOptions::default()
+    };
+    let svg = render_svg(&molecule, &options);
+    assert!(!svg.contains(">H</text>"), "{svg}");
+    let wedges = svg.matches("bond single wedge").count() + svg.matches("bond single hash").count();
+    assert_eq!(wedges, 2);
+}

@@ -34,7 +34,11 @@ mod label;
 use moiety_core::{Atom, BondOrder, Element, Molecule, Provenance, Reading, Span, aromatic};
 
 use crate::layout::{Bounds, Layout, Point, layout};
-use crate::wedge::{Wedged, wedges};
+use crate::wedge::{HYDROGEN_BOND, Wedged, wedges};
+
+/// Shortest bond to a hydrogen drawn at a stereocentre, in font sizes, that
+/// leaves its wedge plain beside the label. Smaller drawings wedge a ring bond.
+const HYDROGEN_ROOM: f64 = 1.0;
 use crate::xml::escape;
 use label::Label;
 
@@ -124,7 +128,8 @@ struct Scene {
 impl Scene {
     fn new(molecule: &Molecule, metrics: Metrics) -> Self {
         let geometry = layout(molecule);
-        let marks = wedges(molecule, geometry.positions());
+        let roomy = HYDROGEN_BOND * metrics.bond >= HYDROGEN_ROOM * metrics.font;
+        let marks = wedges(molecule, geometry.positions(), roomy);
         let (mut drawable, circled_rings) = kekule(molecule, &geometry);
         let mut positions = geometry.positions().to_vec();
         let mut wedges = marks.bonds;

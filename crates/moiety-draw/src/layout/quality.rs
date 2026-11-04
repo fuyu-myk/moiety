@@ -5,7 +5,7 @@ use moiety_core::Molecule;
 
 use super::geometry::{EPSILON, Point, open_gap};
 use crate::graph::{self, Adjacency};
-use crate::rings::{RingInfo, RingSystem};
+use crate::rings::{RingInfo, RingSystem, corner_between};
 
 /// Atoms of a ring system closer than this, in bond lengths, are crowded.
 pub(super) const CLEARANCE: f64 = 0.5;
@@ -326,9 +326,7 @@ impl Frame {
             return Vec::new();
         };
         let (start, width) = open_gap(&directions, |a, b| {
-            self.corners
-                .binary_search(&(atom, a.min(b), a.max(b)))
-                .is_ok()
+            corner_between(&self.corners, a, atom, b)
         });
         (1..=count)
             .map(|j| origin + Point::from_angle(start + width * j as f64 / (count + 1) as f64))
