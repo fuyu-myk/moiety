@@ -26,6 +26,18 @@ enum Side {
     Below,
 }
 
+impl Side {
+    /// The side across the symbol from this one.
+    fn opposite(self) -> Side {
+        match self {
+            Side::Right => Side::Left,
+            Side::Left => Side::Right,
+            Side::Above => Side::Below,
+            Side::Below => Side::Above,
+        }
+    }
+}
+
 /// Vertical position of a piece of label text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Level {
@@ -310,42 +322,35 @@ pub(super) fn labels(
                 };
                 Some((other, label.as_ref()?))
             })
-            .flat_map(|(other, label)| {
-                let at = points[other];
-                label
-                    .keep_out(font)
-                    .into_iter()
-                    .map(move |(low, high)| (at + low, at + high))
-            })
+            .flat_map(|(other, label)| placed(label, points[other], font))
             .collect();
         let clear = |side: Side| {
             let candidate = Label {
                 side,
                 ..label.clone()
             };
-            let at = points[index];
-            candidate.keep_out(font).iter().skip(1).all(|&(low, high)| {
-                !others
-                    .iter()
-                    .any(|&other| overlaps((at + low, at + high), other))
-            })
+            placed(&candidate, points[index], font)
+                .skip(1)
+                .all(|rect| !others.iter().any(|&other| overlaps(rect, other)))
         };
-        let opposite = match label.side {
-            Side::Right => Side::Left,
-            Side::Left => Side::Right,
-            Side::Above => Side::Below,
-            Side::Below => Side::Above,
-        };
+        let opposite = label.side.opposite();
         let free = free_sides(&directions(adjacency, points, index));
         if !clear(label.side) && free.contains(&opposite) && clear(opposite) {
-            let side = opposite;
             settled[index] = Some(Label {
-                side,
+                side: opposite,
                 ..label.clone()
             });
         }
     }
     settled
+}
+
+/// The boxes [`Label::keep_out`] gives for `label`, placed at `at`.
+fn placed(label: &Label, at: Point, font: f64) -> impl Iterator<Item = Rect> {
+    label
+        .keep_out(font)
+        .into_iter()
+        .map(move |(low, high)| (at + low, at + high))
 }
 
 /// Unit vectors from atom `index` along each of its bonds.
