@@ -43,6 +43,11 @@ main {
   overflow-wrap: anywhere;
 }
 
+.formula.smiles {
+  font-size: 1rem;
+  word-break: break-all;
+}
+
 .formula span {
   border-radius: 4px;
 }

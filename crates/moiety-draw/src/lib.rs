@@ -32,6 +32,6 @@ mod rings;
 pub mod svg;
 mod xml;
 
-pub use html::{render_fragment, render_html};
+pub use html::{render_fragment, render_html, render_smiles_fragment};
 pub use layout::{Layout, Point, layout};
 pub use svg::{SvgOptions, render_reading_svg, render_svg};

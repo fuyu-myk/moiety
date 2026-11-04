@@ -1,7 +1,8 @@
 "use strict";
 
-// Reads formulas off the main thread, so a slow formula never blocks typing.
-// Each message is a formula; each reply is { formula, html } or { formula, error }.
+// Reads formulas and SMILES strings off the main thread, so a slow input never blocks typing.
+// Each message is { input, mode }, mode "formula" or "smiles"; each reply is
+// { input, mode, html } or { input, mode, error }.
 
 // Wasm memory never shrinks, so an instance that grew past this is replaced.
 var MEMORY_LIMIT = 64 * 1024 * 1024;
@@ -32,32 +33,33 @@ function load() {
 }
 
 // Each call comes before the view it needs: calls can grow memory, which detaches older views.
-function render(exports, formula) {
-  var bytes = encoder.encode(formula);
+function render(exports, input, mode) {
+  var bytes = encoder.encode(input);
   var at = exports.moiety_input(bytes.length);
   new Uint8Array(exports.memory.buffer, at, bytes.length).set(bytes);
-  var length = exports.moiety_render();
+  var length = mode === "smiles" ? exports.moiety_render_smiles() : exports.moiety_render();
   at = exports.moiety_output();
   return decoder.decode(new Uint8Array(exports.memory.buffer, at, length));
 }
 
 self.onmessage = function (event) {
-  var formula = event.data;
+  var input = event.data.input;
+  var mode = event.data.mode;
   load()
     .then(function (module) {
       return instance || WebAssembly.instantiate(module, {});
     })
     .then(function (ready) {
       instance = ready;
-      var html = render(instance.exports, formula);
+      var html = render(instance.exports, input, mode);
       if (instance.exports.memory.buffer.byteLength > MEMORY_LIMIT) {
         instance = null;
       }
-      self.postMessage({ formula: formula, html: html });
+      self.postMessage({ input: input, mode: mode, html: html });
     })
     .catch(function (error) {
-      // A trap can leave the module half way through an update, so the next formula gets a fresh one.
+      // A trap can leave the module half way through an update, so the next input gets a fresh one.
       instance = null;
-      self.postMessage({ formula: formula, error: String(error) });
+      self.postMessage({ input: input, mode: mode, error: String(error) });
     });
 };

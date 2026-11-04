@@ -29,6 +29,25 @@
   color: var(--muted);
 }
 
+.mode {
+  display: flex;
+  gap: 1rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  border: 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.mode legend {
+  float: left;
+  margin-right: 0.25rem;
+}
+
+.mode label {
+  cursor: pointer;
+}
+
 .prompt {
   display: block;
   margin-bottom: 0.25rem;
