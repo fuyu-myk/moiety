@@ -30,6 +30,7 @@ pub mod html;
 pub mod layout;
 mod rings;
 pub mod svg;
+mod wedge;
 mod xml;
 
 pub use html::{render_fragment, render_html, render_smiles_fragment};

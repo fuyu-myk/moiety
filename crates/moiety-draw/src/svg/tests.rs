@@ -352,3 +352,25 @@ fn bonds_meet_double_bonds_without_gaps() {
         );
     }
 }
+
+#[test]
+fn draws_one_wedge_or_hash_per_stereocentre() {
+    let molecule = moiety_core::smiles::parse("C[C@@H](C(=O)O)N").unwrap();
+    let svg = render_svg(&molecule, &SvgOptions::default());
+    let wedges = svg.matches("bond single wedge").count() + svg.matches("bond single hash").count();
+    assert_eq!(wedges, 1);
+    let mirror = render_svg(
+        &moiety_core::smiles::parse("C[C@H](C(=O)O)N").unwrap(),
+        &SvgOptions::default(),
+    );
+    assert_ne!(
+        svg.contains("bond single wedge"),
+        mirror.contains("bond single wedge"),
+        "the enantiomers differ"
+    );
+    let flat = render_svg(
+        &moiety_core::smiles::parse("CC(C(=O)O)N").unwrap(),
+        &SvgOptions::default(),
+    );
+    assert!(!flat.contains("wedge") && !flat.contains("hash"));
+}

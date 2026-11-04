@@ -10,7 +10,12 @@
 //!   side, a terminal one such as `C=O` a centred pair, and a triple bond three lines;
 //! - aromatic rings are drawn as a Kekulé structure, or with a circle inside
 //!   when no Kekulé structure exists;
-//! - an attachment point is a short wavy line across the end of its bond.
+//! - an attachment point is a short wavy line across the end of its bond;
+//! - a tetrahedral stereocentre from SMILES gets one wedge or hash, narrow at
+//!   the centre, that shows its configuration.
+//!
+//! A wedged bond is drawn as `<g class="bond single wedge">` or
+//! `<g class="bond single hash">`.
 //!
 //! Every atom is drawn as `<g class="atom" data-atom="i">` and every bond as
 //! `<g class="bond single" data-bond="j">` (or `double`, `triple`, `aromatic`).
@@ -26,6 +31,7 @@ mod label;
 use moiety_core::{BondOrder, Molecule, Provenance, Reading, Span, aromatic};
 
 use crate::layout::{Bounds, Layout, Point, layout};
+use crate::wedge::{Wedged, wedges};
 use crate::xml::escape;
 use label::Label;
 
@@ -108,12 +114,14 @@ struct Scene {
     rings: Vec<Vec<usize>>,
     ring_centres: Vec<Point>,
     circled_rings: Vec<usize>,
+    wedges: Vec<Option<Wedged>>,
     metrics: Metrics,
 }
 
 impl Scene {
     fn new(molecule: &Molecule, metrics: Metrics) -> Self {
         let geometry = layout(molecule);
+        let wedges = wedges(molecule, geometry.positions());
         let (drawable, circled_rings) = kekule(molecule, &geometry);
         let adjacency = drawable.adjacency();
         let points: Vec<Point> = geometry
@@ -135,6 +143,7 @@ impl Scene {
             rings: geometry.rings().to_vec(),
             ring_centres,
             circled_rings,
+            wedges,
             metrics,
         }
     }

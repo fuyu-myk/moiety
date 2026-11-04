@@ -5,6 +5,7 @@ use moiety_core::{Bond, BondOrder};
 use super::label::Rect;
 use super::{Scene, num};
 use crate::layout::{Bounds, EPSILON, Point};
+use crate::wedge::Wedge;
 use crate::xml::escape;
 
 /// Distance between the strokes of a double bond, in bond lengths.
@@ -24,6 +25,12 @@ const MIN_STROKE: f64 = 1.0;
 
 /// Radius of the circle drawn in an aromatic ring that has no Kekulé structure, relative to the ring's apothem.
 const CIRCLE_RATIO: f64 = 0.62;
+
+/// Half the width of a wedge at its wide end, in bond lengths.
+const WEDGE_HALF_WIDTH: f64 = 0.1;
+
+/// Distance between the lines of a hashed wedge, in bond lengths.
+const HASH_SPACING: f64 = 0.12;
 
 /// One stroke of a bond: the line between the atom centres moved by `offset`,
 /// cut back by `inset` pixels at each end that has no label.
@@ -55,9 +62,15 @@ pub(super) fn render(
     let bond = scene.molecule.bonds()[index];
     let (from, to) = (scene.points[bond.a], scene.points[bond.b]);
     let order = order_name(bond.order);
+    let wedged = scene.wedges[index].filter(|_| bond.order == BondOrder::Single);
+    let style = match wedged.map(|w| w.wedge) {
+        Some(Wedge::Solid) => " wedge",
+        Some(Wedge::Hashed) => " hash",
+        None => "",
+    };
     let title = format!("bond {index}: {order}, atoms {} and {}", bond.a, bond.b);
     out.push_str(&format!(
-        "<g class=\"bond {order}\" data-bond=\"{index}\"{span}><title>{}</title>",
+        "<g class=\"bond {order}{style}\" data-bond=\"{index}\"{span}><title>{}</title>",
         escape(&title)
     ));
     if let Some(along) = (to - from).normalized() {
@@ -67,13 +80,65 @@ pub(super) fn render(
             ends(from, to),
             num(hit)
         ));
-        for (start, end) in stroke_ends(scene, &bond, along, &strokes(scene, &bond, along)) {
-            bounds.include(start);
-            bounds.include(end);
-            out.push_str(&format!("<line {}/>", ends(start, end)));
+        if let Some(wedged) = wedged {
+            if let Some(&(start, end)) = stroke_ends(scene, &bond, along, &[Stroke::CENTRE]).first()
+            {
+                let (narrow, wide) = if wedged.narrow == bond.a {
+                    (start, end)
+                } else {
+                    (end, start)
+                };
+                render_wedge(scene, wedged.wedge, narrow, wide, out, bounds);
+            }
+        } else {
+            for (start, end) in stroke_ends(scene, &bond, along, &strokes(scene, &bond, along)) {
+                bounds.include(start);
+                bounds.include(end);
+                out.push_str(&format!("<line {}/>", ends(start, end)));
+            }
         }
     }
     out.push_str("</g>");
+}
+
+/// Writes a wedge from the point `narrow` to the end `wide`: a filled triangle,
+/// or lines across the bond that widen toward `wide`.
+fn render_wedge(
+    scene: &Scene,
+    wedge: Wedge,
+    narrow: Point,
+    wide: Point,
+    out: &mut String,
+    bounds: &mut Bounds,
+) {
+    let Some(along) = (wide - narrow).normalized() else {
+        return;
+    };
+    let half = along.perpendicular() * (WEDGE_HALF_WIDTH * scene.metrics.bond);
+    bounds.include(narrow);
+    bounds.include(wide + half);
+    bounds.include(wide - half);
+    match wedge {
+        Wedge::Solid => {
+            let corners = [narrow, wide + half, wide - half]
+                .iter()
+                .map(|p| format!("{},{}", num(p.x), num(p.y)))
+                .collect::<Vec<_>>()
+                .join(" ");
+            out.push_str(&format!(
+                "<polygon points=\"{corners}\" fill=\"currentColor\" stroke-linejoin=\"round\"/>"
+            ));
+        }
+        Wedge::Hashed => {
+            let length = narrow.distance(wide);
+            let lines = ((length / (HASH_SPACING * scene.metrics.bond)).round() as usize).max(3);
+            for k in 1..=lines {
+                let t = k as f64 / lines as f64;
+                let at = narrow + (wide - narrow) * t;
+                out.push_str(&format!("<line {}/>", ends(at + half * t, at - half * t)));
+            }
+        }
+    }
 }
 
 /// Writes a circle inside every ring that is aromatic but has no Kekulé structure.
