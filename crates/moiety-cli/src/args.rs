@@ -18,6 +18,7 @@ options:
   --dictionary <file>      add the entries of a TOML dictionary to the default one
   --hypervalent            write nitro groups as N(=O)=O instead of [N+](=O)[O-]
   --reading <n>            draw reading n instead of reading 1
+  --smiles                 draw a SMILES string instead of a formula
   -o, --output <file>      write output to a file instead of standard output
   --cases <file>           conformance suite (default conformance/cases.toml)
   --corpus <file>          round-trip SMILES list (default conformance/roundtrip.smi)
@@ -48,6 +49,7 @@ pub struct Args {
     pub dictionary: Option<PathBuf>,
     pub hypervalent: bool,
     pub reading: usize,
+    pub smiles: bool,
     pub output: Option<PathBuf>,
     pub cases: PathBuf,
     pub corpus: PathBuf,
@@ -76,6 +78,7 @@ pub fn parse(argv: &[String]) -> Result<Args> {
         dictionary: None,
         hypervalent: false,
         reading: 1,
+        smiles: false,
         output: None,
         cases: PathBuf::from("conformance/cases.toml"),
         corpus: PathBuf::from("conformance/roundtrip.smi"),
@@ -95,6 +98,7 @@ pub fn parse(argv: &[String]) -> Result<Args> {
             "--dictionary" => args.dictionary = Some(value(arg)?.into()),
             "--hypervalent" => args.hypervalent = true,
             "--reading" => args.reading = number(&value(arg)?, arg)?,
+            "--smiles" => args.smiles = true,
             "-o" | "--output" => args.output = Some(value(arg)?.into()),
             "--cases" => args.cases = value(arg)?.into(),
             "--corpus" => args.corpus = value(arg)?.into(),

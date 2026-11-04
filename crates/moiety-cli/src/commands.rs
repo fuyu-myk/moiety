@@ -9,7 +9,7 @@ use moiety::writer::condense;
 use moiety::{
     ChargeConvention, Dictionary, Interpretation, Options, Reading, default_dictionary, smiles,
 };
-use moiety_draw::{SvgOptions, render_html, render_reading_svg};
+use moiety_draw::{SvgOptions, render_html, render_reading_svg, render_svg};
 
 use crate::args::{Args, Command, USAGE};
 
@@ -200,16 +200,25 @@ fn draw(args: &Args, dictionary: &Dictionary, options: &Options) -> Result<ExitC
             }
         );
     };
+    let svg_options = SvgOptions {
+        title: Some(input.clone()),
+        ..SvgOptions::default()
+    };
+    if args.smiles {
+        if args.command == Command::Html {
+            bail!("html shows the readings of a formula; draw a SMILES string with draw --smiles");
+        }
+        let molecule =
+            smiles::parse(input).with_context(|| format!("cannot read SMILES {input:?}"))?;
+        emit(args, &render_svg(&molecule, &svg_options))?;
+        return Ok(ExitCode::SUCCESS);
+    }
     let result = moiety::interpret_with(input, dictionary, options);
     let readings = result.readings();
     if readings.is_empty() {
         eprint!("{}", describe(input, &result));
         return Ok(ExitCode::FAILURE);
     }
-    let svg_options = SvgOptions {
-        title: Some(input.clone()),
-        ..SvgOptions::default()
-    };
     let output = if args.command == Command::Html {
         render_html(input, readings, &svg_options)
     } else {
@@ -422,6 +431,27 @@ mod tests {
         assert!(
             matches!(draw(&invalid, default_dictionary(), &options), Ok(code) if code == ExitCode::FAILURE)
         );
+    }
+
+    #[test]
+    fn draws_smiles() {
+        let options = Options::default();
+        let run = |list: &[&str]| {
+            let argv: Vec<String> = list.iter().map(ToString::to_string).collect();
+            draw(
+                &crate::args::parse(&argv).unwrap(),
+                default_dictionary(),
+                &options,
+            )
+        };
+        let out = std::env::temp_dir().join("moiety-draws-smiles.svg");
+        let out = out.to_str().unwrap();
+        assert!(
+            matches!(run(&["draw", "--smiles", "c1ccccc1O", "-o", out]), Ok(code) if code == ExitCode::SUCCESS)
+        );
+        assert!(std::fs::read_to_string(out).unwrap().contains("<svg"));
+        assert!(run(&["draw", "--smiles", "C1CC"]).is_err());
+        assert!(run(&["html", "--smiles", "CCO"]).is_err());
     }
 
     #[test]
