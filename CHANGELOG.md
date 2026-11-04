@@ -23,6 +23,7 @@ Grammar version 4.
 - A locant that lists a position whose atom cannot take a substituent suggests the nearest position with the same element that can: `3-MeC3H3N2` suggests `1-MeC3H3N2`, the nitrogen that holds a hydrogen.
 - Bridged ring systems are drawn without crossing bonds where the convention has none: a bridge across a ring is an arc or a shallow bow, chosen with the substituents in mind, and a system that still draws badly is started from another ring or relaxed, whichever is most legible. Bicyclo[2.2.2]octanes, quinuclidines, tropanes, artemisinin and cryptands no longer cross.
 - `layout` no longer keeps every bond one unit long: bridges may be shorter and templates follow their source, within 0.55 to 1.6.
+- An atom's hydrogens move to the other side of its symbol when they would cover a neighbouring label, so two hydroxyls side by side read `HO HO` instead of `OHHO`.
 - A substituent on a ring atom whose angles are nearly even, such as the methyl at a steroid's ring fusion or the hydroxyl of a decalol, takes the angle that no ring fills instead of one inside a ring.
 
 ## 0.5.0 - 2026-11-03

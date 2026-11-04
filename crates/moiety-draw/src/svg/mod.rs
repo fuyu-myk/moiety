@@ -129,9 +129,7 @@ impl Scene {
             .iter()
             .map(|&p| p * metrics.bond)
             .collect();
-        let labels = (0..points.len())
-            .map(|index| Label::for_atom(&drawable, &adjacency, &points, index))
-            .collect();
+        let labels = label::labels(&drawable, &adjacency, &points, metrics.font);
         let ring_centres = (0..geometry.rings().len())
             .map(|index| geometry.ring_centre(index).unwrap_or_default() * metrics.bond)
             .collect();
