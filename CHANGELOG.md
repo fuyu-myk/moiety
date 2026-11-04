@@ -2,9 +2,9 @@
 
 Notable changes to the moiety crates. Versions follow [Semantic Versioning](https://semver.org/); before 1.0, a minor version can change how formulas are read. The grammar, the ranking policy, the bundled dictionary and the conformance suite carry their own versions, given where they change.
 
-## Unreleased
+## 0.6.0 - 2026-11-04
 
-Grammar version 4.
+Grammar version 4, dictionary 1.4.0, conformance suite 0.6.0.
 
 ### Added
 

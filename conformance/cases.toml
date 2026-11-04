@@ -16,7 +16,7 @@
 
 [suite]
 name = "moiety-conformance"
-version = "0.5.0"
+version = "0.6.0"
 grammar = 4
 ranking = 2
 
