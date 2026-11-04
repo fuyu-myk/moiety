@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
+use moiety_draw::terminal::{Protocol, Theme};
 
 pub const USAGE: &str = "\
 usage: moiety <command> [options] [arguments]
@@ -8,7 +9,7 @@ usage: moiety <command> [options] [arguments]
 commands:
   parse <formula>...       print every reading of each formula
   write <smiles>...        write molecules as condensed formulas
-  draw <formula>           render the skeletal structure as SVG
+  draw <formula>           draw the skeletal structure, in the terminal or as SVG
   html <formula>           render an interactive page with every reading
   conformance              run the conformance suite and round-trip corpora
   differential <results>   compare with another implementation's label results
@@ -19,6 +20,10 @@ options:
   --hypervalent            write nitro groups as N(=O)=O instead of [N+](=O)[O-]
   --reading <n>            draw reading n instead of reading 1
   --smiles                 draw a SMILES string instead of a formula
+  --format <format>        draw as svg, png, text, kitty, iterm2 or sixel; by default
+                           draw shows the structure when writing to a terminal,
+                           writes PNG for -o <file>.png, and SVG otherwise
+  --theme <dark|light>     colours of terminal images and PNG files
   -o, --output <file>      write output to a file instead of standard output
   --cases <file>           conformance suite (default conformance/cases.toml)
   --corpus <file>          round-trip SMILES list (default conformance/roundtrip.smi)
@@ -42,6 +47,14 @@ pub enum Command {
     Version,
 }
 
+/// What `draw` writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    Svg,
+    Png,
+    Terminal(Protocol),
+}
+
 #[derive(Debug)]
 pub struct Args {
     pub command: Command,
@@ -50,12 +63,36 @@ pub struct Args {
     pub hypervalent: bool,
     pub reading: usize,
     pub smiles: bool,
+    pub format: Option<Format>,
+    pub theme: Option<Theme>,
     pub output: Option<PathBuf>,
     pub cases: PathBuf,
     pub corpus: PathBuf,
     pub generated: usize,
     pub seed: u64,
     pub adjudications: PathBuf,
+}
+
+impl Args {
+    /// The defaults of every option, for `command`.
+    fn new(command: Command) -> Self {
+        Self {
+            command,
+            inputs: Vec::new(),
+            dictionary: None,
+            hypervalent: false,
+            reading: 1,
+            smiles: false,
+            format: None,
+            theme: None,
+            output: None,
+            cases: PathBuf::from("conformance/cases.toml"),
+            corpus: PathBuf::from("conformance/roundtrip.smi"),
+            generated: 500,
+            seed: 2026,
+            adjudications: PathBuf::from("conformance/differential/adjudications.toml"),
+        }
+    }
 }
 
 pub fn parse(argv: &[String]) -> Result<Args> {
@@ -72,20 +109,7 @@ pub fn parse(argv: &[String]) -> Result<Args> {
         Some("dictionary") => Command::Dictionary,
         Some(other) => bail!("unknown command {other:?}\n\n{USAGE}"),
     };
-    let mut args = Args {
-        command,
-        inputs: Vec::new(),
-        dictionary: None,
-        hypervalent: false,
-        reading: 1,
-        smiles: false,
-        output: None,
-        cases: PathBuf::from("conformance/cases.toml"),
-        corpus: PathBuf::from("conformance/roundtrip.smi"),
-        generated: 500,
-        seed: 2026,
-        adjudications: PathBuf::from("conformance/differential/adjudications.toml"),
-    };
+    let mut args = Args::new(command);
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
             iter.next()
@@ -99,6 +123,8 @@ pub fn parse(argv: &[String]) -> Result<Args> {
             "--hypervalent" => args.hypervalent = true,
             "--reading" => args.reading = number(&value(arg)?, arg)?,
             "--smiles" => args.smiles = true,
+            "--format" => args.format = Some(format(&value(arg)?)?),
+            "--theme" => args.theme = Some(theme(&value(arg)?)?),
             "-o" | "--output" => args.output = Some(value(arg)?.into()),
             "--cases" => args.cases = value(arg)?.into(),
             "--corpus" => args.corpus = value(arg)?.into(),
@@ -110,6 +136,12 @@ pub fn parse(argv: &[String]) -> Result<Args> {
             input => args.inputs.push(input.to_string()),
         }
     }
+    check(&args)?;
+    Ok(args)
+}
+
+/// Fails on options that do not fit together or with the command.
+fn check(args: &Args) -> Result<()> {
     if matches!(
         args.command,
         Command::Parse | Command::Write | Command::Draw | Command::Html
@@ -123,7 +155,30 @@ pub fn parse(argv: &[String]) -> Result<Args> {
     if args.smiles && !matches!(args.command, Command::Draw | Command::Html) {
         bail!("--smiles applies to draw");
     }
-    Ok(args)
+    if (args.format.is_some() || args.theme.is_some()) && args.command != Command::Draw {
+        bail!("--format and --theme apply to draw");
+    }
+    Ok(())
+}
+
+fn format(name: &str) -> Result<Format> {
+    Ok(match name {
+        "svg" => Format::Svg,
+        "png" => Format::Png,
+        "text" => Format::Terminal(Protocol::Unicode),
+        "kitty" => Format::Terminal(Protocol::Kitty),
+        "iterm2" => Format::Terminal(Protocol::Iterm2),
+        "sixel" => Format::Terminal(Protocol::Sixel),
+        _ => bail!("--format is one of svg, png, text, kitty, iterm2 or sixel, not {name:?}"),
+    })
+}
+
+fn theme(name: &str) -> Result<Theme> {
+    Ok(match name {
+        "dark" => Theme::Dark,
+        "light" => Theme::Light,
+        _ => bail!("--theme is dark or light, not {name:?}"),
+    })
 }
 
 fn number<T: std::str::FromStr>(text: &str, flag: &str) -> Result<T> {
@@ -152,6 +207,13 @@ mod tests {
         assert_eq!(args(&[]).unwrap().command, Command::Help);
         assert_eq!(args(&["--version"]).unwrap().command, Command::Version);
         assert_eq!(args(&["parse", "-V"]).unwrap().command, Command::Version);
+        let parsed = args(&["draw", "CO", "--format", "kitty", "--theme", "light"]).unwrap();
+        assert_eq!(parsed.format, Some(Format::Terminal(Protocol::Kitty)));
+        assert_eq!(parsed.theme, Some(Theme::Light));
+        assert_eq!(
+            args(&["draw", "CO", "--format", "text"]).unwrap().format,
+            Some(Format::Terminal(Protocol::Unicode))
+        );
     }
 
     #[test]
@@ -163,5 +225,9 @@ mod tests {
         assert!(args(&["parse", "CO", "--nope"]).is_err());
         assert!(args(&["parse", "CO", "--dictionary"]).is_err());
         assert!(args(&["parse", "CO", "--smiles"]).is_err());
+        assert!(args(&["draw", "CO", "--format", "bmp"]).is_err());
+        assert!(args(&["draw", "CO", "--theme", "blue"]).is_err());
+        assert!(args(&["html", "CO", "--format", "png"]).is_err());
+        assert!(args(&["parse", "CO", "--theme", "dark"]).is_err());
     }
 }

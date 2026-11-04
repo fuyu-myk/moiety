@@ -16,8 +16,12 @@ Grammar version 4.
 - Macrocycles of 12 to 46 atoms are drawn as closed zig-zags on a hexagonal lattice, as chemists draw them, with fused rings and the largest substituents outside and an odd ring's one irregular bond away from substituents: erythromycin, tacrolimus and rapamycin look like their usual drawings.
 - Porphyrins, the morphine skeleton, norbornanes, taxanes and artemisinin take fixed drawings from PubChem's depictions, and steroids are drawn the usual way round, ring A at the lower left and the angular methyls up, whatever order their SMILES lists the atoms in.
 - The `smiles` fuzz target.
+- Pixel and terminal drawings. `moiety draw` shows the structure in the terminal when it writes to one: as an image over the Kitty graphics protocol (Kitty, Ghostty), iTerm2's inline images (iTerm2, WezTerm) or Sixel (foot, Konsole, Windows Terminal), and as braille bonds and text labels anywhere else. `-o <file>.png` writes a PNG, and `--format` and `--theme` choose the output and the colours of images. The library gains `render_image`, `render_png`, `RasterOptions`, `Image` and the `terminal` module, with `render_terminal`, `detect` and `detect_theme`, all without new dependencies.
 
 ### Changed
+
+- `moiety draw` writes SVG to standard output only when that is not a terminal; in a terminal it shows the drawing.
+- moiety-draw's licence is `MIT AND OFL-1.1`: the glyph outlines of Inter that label pixel drawings stay under the SIL Open Font License 1.1.
 
 - A bracket that starts with a locant after a template ring now holds bracketed substituents, as it does after benzene, and a phenyl spelling in it is part of the substituent. So `C5H4N(2-OPh)` reads as 2-phenoxypyridine, and `C5H4N(4-ClPh)` is an error, as `C6H4(4-ClPh)` already was, instead of an underdetermined ring.
 - Units after a template ring whose brackets fill it, as in `C5H4N(2-Cl)CH3`, get CF0108 at the ring instead of CF0204.

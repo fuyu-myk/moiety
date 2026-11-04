@@ -3,10 +3,9 @@
 
 use moiety_core::{AtomKind, Element, Molecule};
 
-use super::num;
+use super::shape::{Anchor, Level, Shape, Text};
 use crate::graph::Adjacency;
 use crate::layout::{Bounds, Point};
-use crate::xml::escape;
 
 /// Baseline of label text below the atom position, in font sizes, so capitals sit centred on it.
 const BASELINE: f64 = 0.35;
@@ -36,41 +35,6 @@ impl Side {
             Side::Below => Side::Above,
         }
     }
-}
-
-/// Vertical position of a piece of label text.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Level {
-    Base,
-    Subscript,
-    Superscript,
-}
-
-impl Level {
-    /// Baseline shift in font sizes, positive downward.
-    fn shift(self) -> f64 {
-        match self {
-            Level::Base => 0.0,
-            Level::Subscript => 0.3,
-            Level::Superscript => -0.45,
-        }
-    }
-
-    /// Font size relative to the label font.
-    fn scale(self) -> f64 {
-        match self {
-            Level::Base => 1.0,
-            Level::Subscript | Level::Superscript => 0.7,
-        }
-    }
-}
-
-/// Horizontal alignment of a run of text.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Anchor {
-    Start,
-    Middle,
-    End,
 }
 
 /// A rectangle relative to the atom position, as `(lowest corner, highest corner)`.
@@ -115,38 +79,14 @@ impl Run {
         )
     }
 
-    fn write(&self, centre: Point, font: f64, out: &mut String) {
-        let anchor = match self.anchor {
-            Anchor::Start => "start",
-            Anchor::Middle => "middle",
-            Anchor::End => "end",
-        };
-        let mut shift = 0.0;
-        let mut body = String::new();
-        for (text, level) in &self.pieces {
-            let target = level.shift() * font;
-            let dy = target - shift;
-            shift = target;
-            if *level == Level::Base && dy.abs() < 1e-9 {
-                body.push_str(&escape(text));
-                continue;
-            }
-            let size = match level {
-                Level::Base => String::new(),
-                _ => format!(" font-size=\"{}\"", num(level.scale() * font)),
-            };
-            body.push_str(&format!(
-                "<tspan dy=\"{}\"{size}>{}</tspan>",
-                num(dy),
-                escape(text)
-            ));
+    /// The run placed at the atom position `centre`.
+    fn text(self, centre: Point, font: f64) -> Text {
+        Text {
+            at: centre + self.at,
+            anchor: self.anchor,
+            pieces: self.pieces,
+            font,
         }
-        let at = centre + self.at;
-        out.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"{anchor}\">{body}</text>",
-            num(at.x),
-            num(at.y)
-        ));
     }
 }
 
@@ -204,14 +144,19 @@ impl Label {
             .fold(0.0, f64::max)
     }
 
-    /// Writes the label text centred on `centre`.
-    pub(super) fn render(&self, centre: Point, font: f64, out: &mut String, bounds: &mut Bounds) {
-        for run in self.runs(font) {
-            let (low, high) = run.rect(font, 0.0);
-            bounds.include(centre + low);
-            bounds.include(centre + high);
-            run.write(centre, font, out);
-        }
+    /// The label text centred on `centre`.
+    pub(super) fn shape(&self, centre: Point, font: f64, bounds: &mut Bounds) -> Shape {
+        let runs = self
+            .runs(font)
+            .into_iter()
+            .map(|run| {
+                let (low, high) = run.rect(font, 0.0);
+                bounds.include(centre + low);
+                bounds.include(centre + high);
+                run.text(centre, font)
+            })
+            .collect();
+        Shape::Label { centre, runs }
     }
 
     /// The text runs of the label, the element symbol first.
@@ -513,7 +458,9 @@ mod tests {
         );
         assert_eq!(label(0, 2, Side::Right).charge_piece().unwrap().0, "2+");
         let mut out = String::new();
-        label(3, 1, Side::Right).render(Point::default(), 10.0, &mut out, &mut Bounds::default());
+        label(3, 1, Side::Right)
+            .shape(Point::default(), 10.0, &mut Bounds::default())
+            .write(1.0, &mut out);
         assert_eq!(
             out,
             concat!(

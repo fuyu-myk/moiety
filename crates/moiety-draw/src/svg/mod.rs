@@ -30,6 +30,7 @@
 mod atom;
 mod bond;
 mod label;
+pub(crate) mod shape;
 
 use moiety_core::{Atom, BondOrder, Element, Molecule, Provenance, Reading, Span, aromatic};
 
@@ -41,6 +42,7 @@ use crate::wedge::{HYDROGEN_BOND, Wedged, wedges};
 const HYDROGEN_ROOM: f64 = 1.0;
 use crate::xml::escape;
 use label::Label;
+use shape::Shape;
 
 /// Sizes and text of an SVG drawing.
 #[derive(Clone, Debug, PartialEq)]
@@ -200,7 +202,9 @@ fn render(molecule: &Molecule, provenance: Option<&Provenance>, options: &SvgOpt
         let span = span_attribute(provenance.and_then(|p| p.bond_source(index)));
         bond::render(&scene, index, &span, &mut bonds, &mut bounds);
     }
-    bond::render_circles(&scene, &mut bonds, &mut bounds);
+    for circle in bond::circles(&scene, &mut bounds) {
+        circle.write(scene.metrics.line, &mut bonds);
+    }
     let mut atoms = String::new();
     for index in 0..scene.points.len() {
         let span = span_attribute(provenance.and_then(|p| p.atom_source(index)));
@@ -211,6 +215,40 @@ fn render(molecule: &Molecule, provenance: Option<&Provenance>, options: &SvgOpt
         .clone()
         .unwrap_or_else(|| format!("Skeletal structure of {}", molecule.to_smiles()));
     document(&title, metrics, bounds, &bonds, &atoms)
+}
+
+/// A drawing as the marks it is made of, for painters other than SVG.
+pub(crate) struct Picture {
+    /// Every mark: bond strokes, then ring circles, then labels.
+    pub(crate) shapes: Vec<Shape>,
+    /// The box the marks cover, before padding.
+    pub(crate) bounds: Bounds,
+    /// Width of stroked lines, in pixels.
+    pub(crate) line_width: f64,
+    /// Empty margin wanted around the marks, in pixels.
+    pub(crate) padding: f64,
+}
+
+/// The marks of the drawing of `molecule` that [`render_svg`] writes, in the
+/// same pixel coordinates.
+pub(crate) fn picture(molecule: &Molecule, options: &SvgOptions) -> Picture {
+    let metrics = Metrics::new(options);
+    let scene = Scene::new(molecule, metrics);
+    let mut bounds = Bounds::default();
+    let mut shapes = Vec::new();
+    for index in 0..scene.molecule.bonds().len() {
+        shapes.extend(bond::shapes(&scene, index, &mut bounds));
+    }
+    shapes.extend(bond::circles(&scene, &mut bounds));
+    for index in 0..scene.points.len() {
+        shapes.extend(atom::shapes(&scene, index, &mut bounds));
+    }
+    Picture {
+        shapes,
+        bounds,
+        line_width: metrics.line,
+        padding: metrics.padding,
+    }
 }
 
 fn span_attribute(span: Option<Span>) -> String {

@@ -30,7 +30,7 @@ The language is specified in [docs/grammar.md](docs/grammar.md): normalization, 
 | --- | --- |
 | `moiety-core` | Normalization, lexer, parser, valence resolution, interpretation, SMILES reading and canonical writing. No dependencies. |
 | `moiety` | The bundled abbreviation dictionary and its TOML loader, the inverse writer, and the conformance runner. |
-| `moiety-draw` | Template layout for the input language, SVG rendering, and an HTML page with bidirectional provenance highlighting. |
+| `moiety-draw` | Template layout for the input language; SVG, PNG and terminal drawings; and an HTML page with bidirectional provenance highlighting. |
 | `moiety-cli` | The `moiety` command. |
 | `moiety-wasm` | The WebAssembly module behind the browser playground. Not published. |
 
@@ -68,7 +68,7 @@ Every `Reading` carries its canonical SMILES, rank, score, the direction it was 
 ```text
 moiety parse <formula>...     every reading of each formula
 moiety write <smiles>...      condensed formulas from SMILES (the inverse writer)
-moiety draw <formula>         skeletal structure as SVG
+moiety draw <formula>         skeletal structure, in the terminal or as SVG or PNG
 moiety html <formula>         a page with every reading and provenance highlighting
 moiety conformance            the conformance suite and round-trip corpora, with the v1.0 gate
 moiety differential <file>    compare with another implementation's results on substituent labels
@@ -83,8 +83,25 @@ moiety dictionary             the abbreviation dictionary
 
 ```text
 moiety draw 'BocNHCH2COOH' -o boc-glycine.svg
+moiety draw 'BocNHCH2COOH' -o boc-glycine.png
 moiety html 'CH3SOCH3' -o dmso.html
 ```
+
+In a terminal, `moiety draw` shows the structure in place. Kitty and Ghostty get an image over the Kitty graphics protocol, iTerm2 and WezTerm over iTerm2's inline images, and foot, Konsole and Windows Terminal as Sixel. Any other terminal, and tmux, gets the drawing in Unicode, bonds as braille dots and labels as text:
+
+```text
+        OH
+        ⢰
+        ⢸
+        ⢸
+      ⢀⡠⢜⡑⠦⣄
+   ⣀⠤⠚⠉  ⠈⠓⠦⣙⠲⠄
+  ⠋⠁        ⠈⠁ O
+```
+
+`--format` picks the output (`svg`, `png`, `text`, `kitty`, `iterm2` or `sixel`), and `--theme dark` or `--theme light` the colours of images. Without `--theme`, terminal images follow `COLORFGBG`, dark when it is unset, and PNG files are black on a transparent background. Written to a pipe, `moiety draw` gives SVG as before.
+
+PNG files and terminal images are painted by moiety-draw itself, with labels set in [Inter](https://github.com/rsms/inter), whose glyph outlines ship with the crate under the SIL Open Font License 1.1 ([crates/moiety-draw/fonts](crates/moiety-draw/fonts)).
 
 The HTML page puts the formula above a card for every reading, with its rank, score, direction and the choice it made at each ambiguity. Pointing at, focusing or selecting characters of the formula highlights the atoms and bonds they produced in every reading, and pointing at an atom or bond highlights its characters.
 
