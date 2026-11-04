@@ -4,7 +4,8 @@
 //! Three layers build on each other:
 //!
 //! - [`layout`](mod@layout) places every atom in the plane, one unit per bond, with
-//!   zig-zag chains, regular-polygon rings and components side by side.
+//!   zig-zag chains, regular-polygon rings, evenly spaced branches around a hub
+//!   such as the phosphorus of `PPh3`, and components side by side.
 //! - [`svg`] draws a layout as a self-contained SVG in the usual skeletal
 //!   conventions. Drawn from a [`Reading`](moiety_core::Reading), every atom
 //!   and bond carries the byte span of the input it came from.

@@ -4,7 +4,8 @@
 //! zig-zags: each atom turns the opposite way from the atom before it, so bonds
 //! alternate sides at 120 degrees. Branches spread evenly around their atom,
 //! substituents on rings take the widest free angle, and atoms with a triple
-//! bond or two double bonds are straight.
+//! bond or two double bonds are straight. A component with a hub is placed
+//! outward from it, its branches evenly spaced and the first pointing up.
 
 use std::collections::VecDeque;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_3, FRAC_PI_6, PI, TAU};
@@ -12,6 +13,7 @@ use std::f64::consts::{FRAC_PI_2, FRAC_PI_3, FRAC_PI_6, PI, TAU};
 use moiety_core::Molecule;
 
 use super::geometry::{EPSILON, Point, largest_gap};
+use super::hub;
 use super::ring_system::layout_system;
 use crate::graph::{self, Adjacency};
 use crate::rings::RingInfo;
@@ -47,11 +49,13 @@ impl<'a> Placer<'a> {
         }
     }
 
-    /// Places every atom of `component` around the origin.
-    pub(super) fn place(&mut self, component: &[usize]) {
-        match self.start_system(component) {
-            Some(system) => self.place_start_system(system),
-            None => {
+    /// Places every atom of `component` around the origin, and returns its hub if it has one.
+    pub(super) fn place(&mut self, component: &[usize]) -> Option<usize> {
+        let hub = hub::find(self.molecule, self.adjacency, self.rings, component);
+        match (hub, self.start_system(component)) {
+            (Some(hub), _) => self.place_hub(hub),
+            (None, Some(system)) => self.place_start_system(system),
+            (None, None) => {
                 let root = self.root(component);
                 self.positions[root] = Some(Point::default());
                 self.queue.push_back(root);
@@ -60,6 +64,7 @@ impl<'a> Placer<'a> {
         while let Some(atom) = self.queue.pop_front() {
             self.expand(atom);
         }
+        hub
     }
 
     /// The position of every atom.
@@ -94,6 +99,19 @@ impl<'a> Placer<'a> {
         let one_end = graph::farthest(self.adjacency, component[0]);
         let other_end = graph::farthest(self.adjacency, one_end);
         one_end.min(other_end)
+    }
+
+    /// Places `hub` at the origin and its neighbours evenly around it, the first straight up.
+    fn place_hub(&mut self, hub: usize) {
+        self.positions[hub] = Some(Point::default());
+        let order = hub::order(self.molecule, self.adjacency, hub);
+        let step = TAU / order.len() as f64;
+        let slots = order
+            .into_iter()
+            .enumerate()
+            .map(|(j, next)| (next, -FRAC_PI_2 + step * j as f64))
+            .collect();
+        self.place_slots(hub, slots);
     }
 
     fn place_start_system(&mut self, system: usize) {
@@ -157,6 +175,11 @@ impl<'a> Placer<'a> {
             }
             _ => self.gap_slots(atom, &placed, &pending),
         };
+        self.place_slots(atom, slots);
+    }
+
+    /// Places each neighbour of `atom` one bond away in the direction given with it.
+    fn place_slots(&mut self, atom: usize, slots: Vec<(usize, f64)>) {
         let origin = self.position(atom);
         for (next, angle) in slots {
             let target = origin + Point::from_angle(angle);

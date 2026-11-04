@@ -17,7 +17,7 @@
 [suite]
 name = "moiety-conformance"
 version = "0.4.0"
-grammar = 2
+grammar = 3
 ranking = 2
 
 # Chains and branches
@@ -576,11 +576,10 @@ span = [0, 2]
 
 [[case]]
 id = "locant/bare-after-substituent"
-corpus = "adversarial"
+corpus = "curated"
 input = "2-Cl-1,4-C6H3(OH)2"
-expect = "invalid"
-code = "CF0108"
-span = [5, 9]
+expect = "unique"
+smiles = ["Oc1ccc(O)c(Cl)c1"]
 
 [[case]]
 id = "locant/mid-chain"
@@ -947,6 +946,172 @@ input = "CH3(CH2)2-C5H4N"
 expect = "underdetermined"
 reason = "unknown-ring"
 span = [10, 14]
+
+# Rings numbered by templates (grammar 3)
+
+[[case]]
+id = "template/dmap"
+corpus = "curated"
+input = "4-Me2NC5H4N"
+expect = "unique"
+smiles = ["CN(C)c1ccncc1"]
+
+[[case]]
+id = "template/lutidine"
+corpus = "curated"
+input = "2,6-Me2C5H3N"
+expect = "unique"
+smiles = ["Cc1cccc(C)n1"]
+
+[[case]]
+id = "template/methylfuran"
+corpus = "curated"
+input = "2-MeC4H3O"
+expect = "unique"
+smiles = ["Cc1ccco1"]
+
+[[case]]
+id = "template/chlorothiophene"
+corpus = "curated"
+input = "3-ClC4H3S"
+expect = "unique"
+smiles = ["Clc1ccsc1"]
+
+[[case]]
+id = "template/silylmethylpyridine"
+corpus = "curated"
+input = "2-Me3SiCH2C5H4N"
+expect = "unique"
+smiles = ["C[Si](C)(C)Cc1ccccn1"]
+
+[[case]]
+id = "template/attachment-before"
+corpus = "curated"
+input = "-5-Br-2-C5H3N"
+expect = "unique"
+smiles = ["*c1ccc(Br)cn1"]
+
+[[case]]
+id = "template/attachment-in-a-chain"
+corpus = "curated"
+input = "HOCH2-2,6-C5H3N-CH2OH"
+expect = "unique"
+smiles = ["OCc1cccc(CO)n1"]
+
+[[case]]
+id = "template/attachment-then-units"
+corpus = "curated"
+input = "2-C5H4NCH2OH"
+expect = "unique"
+smiles = ["OCc1ccccn1"]
+
+[[case]]
+id = "template/trailing-attachment"
+corpus = "curated"
+input = "(C5H4N-2)3P"
+expect = "unique"
+smiles = ["c1ccc(P(c2ccccn2)c2ccccn2)nc1"]
+
+[[case]]
+id = "template/trailing-attachment-in-a-group"
+corpus = "curated"
+input = "Ph2P(C5H4N-2)"
+expect = "unique"
+smiles = ["c1ccc(P(c2ccccc2)c2ccccn2)cc1"]
+
+[[case]]
+id = "template/quinoline"
+corpus = "curated"
+input = "8-HOC9H6N"
+expect = "unique"
+smiles = ["Oc1cccc2cccnc12"]
+
+[[case]]
+id = "template/indole"
+corpus = "curated"
+input = "3-C8H6NCH2COOH"
+expect = "unique"
+smiles = ["OC(=O)Cc1c[nH]c2ccccc12"]
+
+[[case]]
+id = "template/pyrrole-nitrogen"
+corpus = "curated"
+input = "1-MeC4H4N"
+expect = "unique"
+smiles = ["Cn1cccc1"]
+
+[[case]]
+id = "template/imidazole"
+corpus = "curated"
+input = "1-MeC3H3N2"
+expect = "unique"
+smiles = ["Cn1ccnc1"]
+
+[[case]]
+id = "template/thiazole"
+corpus = "curated"
+input = "2-H2NC3H2NS"
+expect = "unique"
+smiles = ["Nc1nccs1"]
+
+[[case]]
+id = "template/pyrimidine"
+corpus = "curated"
+input = "2-H2NC4H3N2"
+expect = "unique"
+smiles = ["Nc1ncccn1"]
+
+[[case]]
+id = "template/group-starting-with-a-bond"
+corpus = "curated"
+input = "CH3CH(-2,5-C5H3NOH)CH3"
+expect = "unique"
+smiles = ["CC(C)c1ccc(O)cn1"]
+
+[[case]]
+id = "locant/group-starting-with-a-bond"
+corpus = "curated"
+input = "CH3CH(-1,2,4-C6H3(Cl)Br)CH3"
+expect = "unique"
+smiles = ["CC(C)c1ccc(Br)cc1Cl"]
+
+[[case]]
+id = "template/naphthyl-trailing-attachment"
+corpus = "curated"
+input = "-C10H7-1"
+expect = "unique"
+smiles = ["*c1cccc2ccccc12"]
+
+[[case]]
+id = "template/substituents-after"
+corpus = "curated"
+input = "C5H4N-2-CH=NNHPh"
+expect = "unique"
+smiles = ["C(=NNc1ccccc1)c1ccccn1"]
+
+[[case]]
+id = "template/position-without-hydrogen"
+corpus = "adversarial"
+input = "1-ClC5H4N"
+expect = "invalid"
+code = "CF0108"
+span = [0, 2]
+
+[[case]]
+id = "template/unit-before-substituents-after"
+corpus = "adversarial"
+input = "CH3C5H4N-2-OH"
+expect = "invalid"
+code = "CF0108"
+span = [3, 8]
+
+[[case]]
+id = "template/no-locant"
+corpus = "curated"
+input = "C5H4NCH2OH"
+expect = "underdetermined"
+reason = "unknown-ring"
+span = [0, 4]
 
 # Generated in bulk below from hand-checked tables.
 

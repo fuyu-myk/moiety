@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{aromatic_symbol, default_valence};
+use super::{aromatic_symbol, implicit_hydrogens};
 use crate::molecule::{Atom, AtomKind, BondOrder, Molecule};
 
 /// Most leaves explored when breaking symmetry ties in one component.
@@ -337,10 +337,10 @@ impl<'a> Writer<'a> {
             AtomKind::Element(element) => element,
         };
         let symbol = element.symbol();
-        let used = self.molecule.bond_valence(index) + u8::from(atom.aromatic);
+        let bonds = self.molecule.bond_valence(index);
         let bare = atom.charge == 0
             && (!atom.aromatic || matches!(symbol, "B" | "C" | "N" | "O" | "P" | "S"))
-            && default_valence(symbol, used).is_some_and(|v| v - used == atom.hydrogens);
+            && implicit_hydrogens(symbol, bonds, atom.aromatic) == Some(atom.hydrogens);
         let written_symbol = if atom.aromatic && aromatic_symbol(symbol) {
             symbol.to_ascii_lowercase()
         } else {

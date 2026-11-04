@@ -3,7 +3,7 @@ use super::state::{AAtom, ABond, State};
 use super::{Ctx, Failure, assemble_seq, finish_pending};
 use crate::diagnostic::Code;
 use crate::element::Element;
-use crate::molecule::{AtomKind, BondOrder};
+use crate::molecule::BondOrder;
 use crate::parser::{Arene, Seq, Substituent, Unit, UnitKind};
 use crate::span::Span;
 
@@ -36,7 +36,7 @@ pub(crate) fn expand(state: &State, unit: &Unit, ctx: &mut Ctx<'_>) -> Vec<(Stat
             reversed,
             symbol,
         } => abbreviation(state, unit, *entry, *reversed, *symbol, ctx),
-        UnitKind::Group { bond, seq, .. } => interiors(seq, ctx)
+        UnitKind::Group { bond, seq, .. } => interiors(seq, bond.is_some(), ctx)
             .iter()
             .flat_map(|group| repeat_group(state, group, unit, *bond, ctx))
             .collect(),
@@ -45,11 +45,13 @@ pub(crate) fn expand(state: &State, unit: &Unit, ctx: &mut Ctx<'_>) -> Vec<(Stat
 }
 
 /// Assembles a group interior on its own, keeping the assemblies with the least
-/// free valence (grammar, section 6.2).
-fn interiors(seq: &Seq, ctx: &mut Ctx<'_>) -> Vec<State> {
+/// free valence (grammar, section 6.2). `anchored` is whether the group starts with a bond.
+fn interiors(seq: &Seq, anchored: bool, ctx: &mut Ctx<'_>) -> Vec<State> {
     let whole_allowed = std::mem::replace(&mut ctx.whole_allowed, false);
+    let outer = std::mem::replace(&mut ctx.anchored, anchored);
     let inner = assemble_seq(seq, ctx, State::default(), None);
     ctx.whole_allowed = whole_allowed;
+    ctx.anchored = outer;
     let mut resolved: Vec<State> = Vec::new();
     for s in inner {
         resolved.extend(finish_pending(s, ctx));
@@ -65,55 +67,78 @@ fn interiors(seq: &Seq, ctx: &mut Ctx<'_>) -> Vec<State> {
         .collect()
 }
 
-/// Creates a benzene ring numbered by locants and bonds the substituents written
-/// before it (grammar, section 6.11). Its open positions join the host stack lowest on top.
+/// Creates a ring numbered by locants from its template and bonds its substituents
+/// (grammar, sections 6.11 and 6.12). Its open positions join the host stack
+/// lowest on top, except that a ring opening a group that starts with a bond
+/// keeps its head at the bottom, for the group's host.
 fn numbered_ring(
     state: &State,
     unit: &Unit,
     arene: &Arene,
     ctx: &mut Ctx<'_>,
 ) -> Vec<(State, Piece)> {
-    if state.would_pass_limit(6) {
+    let template = ctx.dictionary.template(arene.template);
+    let parent = template.parent();
+    let implicit = arene.template == 0;
+    if arene.after && !implicit && state.started {
+        ctx.fail(Failure::new(
+            Code::LocantMismatch,
+            "nothing may come before this ring",
+            arene.ring,
+            "its locants leave no position for the unit before it".into(),
+            arene.ring.start,
+        ));
+        return Vec::new();
+    }
+    if state.would_pass_limit(parent.atoms().len()) {
         ctx.oversized.get_or_insert(unit.span);
         return Vec::new();
     }
-    if !ctx.spend(6) {
+    if !ctx.spend(parent.atoms().len()) {
         ctx.exhausted = true;
         return Vec::new();
     }
     let mut ring = state.clone();
     let offset = ring.atoms.len();
-    let site = |position: u8| offset + usize::from(position - 1);
+    let site = |position: u8| {
+        offset
+            + template
+                .atom(position)
+                .expect("the parser checks every position")
+    };
     let substituted = |position: u8| {
-        (arene.after && position == 1)
+        (arene.after && implicit && position == 1)
             || arene.open.contains(&position)
             || arene
                 .substituents
                 .iter()
                 .any(|s| s.positions.contains(&position))
     };
-    for position in 1..=6 {
-        let hydrogens = u8::from(!substituted(position));
+    for (index, atom) in parent.atoms().iter().enumerate() {
+        let position = template.position(index);
+        let attached = position.is_some_and(substituted);
+        let hydrogens = atom.hydrogens - u8::from(attached);
+        let used = parent.bond_valence(index) + hydrogens + u8::from(atom.aromatic);
         ring.atoms.push(AAtom {
-            kind: AtomKind::Element(Element::C),
-            valence: 4,
-            used: 3 + hydrogens,
-            charge: 0,
-            aromatic: true,
+            kind: atom.kind,
+            valence: used + u8::from(attached),
+            used,
+            charge: atom.charge,
+            aromatic: atom.aromatic,
             hydrogens,
             span: arene.ring,
             group: arene.ring,
             reversed_site: false,
             budget_charge: false,
             hydrogenated: false,
-            numbered: arene.open.contains(&position).then_some(offset),
+            numbered: position.filter(|p| arene.open.contains(p)).map(|_| offset),
         });
     }
-    for i in 0..6 {
+    for bond in parent.bonds() {
         ring.bonds.push(ABond {
-            a: offset + i,
-            b: offset + (i + 1) % 6,
-            order: BondOrder::Aromatic,
+            a: offset + bond.a,
+            b: offset + bond.b,
+            order: bond.order,
             token: Some(arene.ring),
         });
     }
@@ -122,7 +147,7 @@ fn numbered_ring(
         if states.is_empty() {
             break;
         }
-        let groups = interiors(&substituent.seq, ctx);
+        let groups = interiors(&substituent.seq, false, ctx);
         let mut next = Vec::new();
         for s in &states {
             for group in &groups {
@@ -135,14 +160,21 @@ fn numbered_ring(
         }
         states = next;
     }
-    let first = if arene.after {
+    let first = if arene.after && implicit {
         Some(1)
     } else {
         arene.open.first().copied()
     };
     let head = first.map_or(offset, site);
-    let mut push: Vec<usize> = arene.after.then(|| site(1)).into_iter().collect();
+    let mut push: Vec<usize> = (arene.after && implicit)
+        .then(|| site(1))
+        .into_iter()
+        .collect();
     push.extend(arene.open.iter().rev().map(|&p| site(p)));
+    if ctx.anchored && !state.started && state.pending.is_empty() {
+        push.retain(|&atom| atom != head);
+        push.insert(0, head);
+    }
     states
         .into_iter()
         .map(|s| {
@@ -463,6 +495,34 @@ fn instantiate(
     sites
 }
 
+/// The failure for a group with no free valence. A group with a host before it
+/// that opens with a template ring whose substituents follow it gets the locant
+/// failure, since those substituents take every position (grammar, section 6.12).
+fn saturated_group(unit: &Unit, hosted: bool) -> Failure {
+    let first = match &unit.kind {
+        UnitKind::Group { seq, .. } => seq.items.first().map(|item| &item.unit.kind),
+        _ => None,
+    };
+    if let Some(UnitKind::Arene(arene)) = first {
+        if hosted && arene.after && arene.template != 0 {
+            return Failure::new(
+                Code::LocantMismatch,
+                "nothing may come before this ring",
+                arene.ring,
+                "its substituents leave no position for the group's host".into(),
+                arene.ring.start,
+            );
+        }
+    }
+    Failure::new(
+        Code::GroupWithoutValence,
+        "this group has no free valence to bond with",
+        unit.span,
+        "every atom inside is already saturated".into(),
+        unit.span.start,
+    )
+}
+
 /// Applies rule R1 to an assembled group interior.
 fn repeat_group(
     state: &State,
@@ -473,13 +533,7 @@ fn repeat_group(
 ) -> Vec<(State, Piece)> {
     let free: u32 = group.atoms.iter().map(|a| u32::from(a.free())).sum();
     let Some(head) = group.atoms.iter().position(|a| a.free() > 0) else {
-        ctx.fail(Failure::new(
-            Code::GroupWithoutValence,
-            "this group has no free valence to bond with",
-            unit.span,
-            "every atom inside is already saturated".into(),
-            unit.span.start,
-        ));
+        ctx.fail(saturated_group(unit, state.started));
         return Vec::new();
     };
     let tail = group.host().unwrap_or(head);

@@ -25,7 +25,7 @@ pub enum Bracket {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Locant {
     /// Numbered positions as a bit set, bit 0 for position 1. Zero marks a list
-    /// with a position outside 1 to 6 or one position twice.
+    /// with a position outside 1 to 8 or one position twice.
     Positions(u8),
     /// `o-`, `m-` or `p-`, or spelled out: positions 1 and 2, 3 or 4.
     Relative(u8),
@@ -411,7 +411,7 @@ fn positions(rest: &str) -> Option<(usize, Locant)> {
     for part in rest[..len].split(',') {
         match part.as_bytes() {
             [] => return None,
-            [digit @ b'1'..=b'6'] if positions & (1 << (digit - b'1')) == 0 => {
+            [digit @ b'1'..=b'8'] if positions & (1 << (digit - b'1')) == 0 => {
                 positions |= 1 << (digit - b'1');
             }
             _ => valid = false,
@@ -655,7 +655,7 @@ mod tests {
             EdgeKind::Locant(Locant::Positions(0))
         );
         assert_eq!(
-            kinds("7-ClC6H4OH")[0],
+            kinds("9-ClC6H4OH")[0],
             EdgeKind::Locant(Locant::Positions(0))
         );
         assert!(

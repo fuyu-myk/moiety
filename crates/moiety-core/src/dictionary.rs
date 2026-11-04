@@ -4,6 +4,7 @@ use std::fmt;
 
 use crate::molecule::{AtomKind, BondOrder, Molecule};
 use crate::smiles::{self, SmilesError};
+use crate::template::RingTemplate;
 
 /// Where an abbreviation bonds to the rest of the formula.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -159,12 +160,13 @@ fn split_attachments(parsed: &Molecule) -> Option<(Molecule, Vec<Attachment>)> {
     Some((fragment, attachments))
 }
 
-/// A named, versioned set of abbreviations.
+/// A named, versioned set of abbreviations and ring templates.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Dictionary {
     name: String,
     version: String,
     entries: Vec<Entry>,
+    rings: Vec<RingTemplate>,
 }
 
 /// A dictionary spelling found in the input.
@@ -186,6 +188,7 @@ impl Dictionary {
             name: name.to_string(),
             version: version.to_string(),
             entries: Vec::new(),
+            rings: Vec::new(),
         }
     }
 
@@ -211,6 +214,68 @@ impl Dictionary {
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&Entry> {
         self.entries.iter().find(|entry| entry.name == name)
+    }
+
+    /// The ring templates, besides the built-in benzene.
+    #[must_use]
+    pub fn rings(&self) -> &[RingTemplate] {
+        &self.rings
+    }
+
+    /// The template numbered `id`: 0 is benzene, and `i + 1` is [`Dictionary::rings`]`[i]`.
+    pub(crate) fn template(&self, id: usize) -> &RingTemplate {
+        match id {
+            0 => RingTemplate::benzene(),
+            _ => &self.rings[id - 1],
+        }
+    }
+
+    /// How many templates there are, benzene included.
+    pub(crate) fn templates(&self) -> usize {
+        self.rings.len() + 1
+    }
+
+    /// Removes the ring template called `name` and returns it, if there is one.
+    pub fn remove_ring(&mut self, name: &str) -> Option<RingTemplate> {
+        let index = self.rings.iter().position(|ring| ring.name() == name)?;
+        Some(self.rings.remove(index))
+    }
+
+    /// Adds a ring template, replacing any template with the same name, and returns
+    /// the one it replaced.
+    ///
+    /// # Errors
+    ///
+    /// Fails when another template, or benzene, has the same formula.
+    pub fn insert_ring(
+        &mut self,
+        ring: RingTemplate,
+    ) -> Result<Option<RingTemplate>, DictionaryError> {
+        let others = std::iter::once(RingTemplate::benzene()).chain(
+            self.rings
+                .iter()
+                .filter(|other| other.name() != ring.name()),
+        );
+        for other in others {
+            if other.formula() == ring.formula() {
+                return Err(DictionaryError::DuplicateRing {
+                    formula: ring.written(ring.hydrogens()),
+                    first: other.name().to_string(),
+                    second: ring.name().to_string(),
+                });
+            }
+        }
+        match self
+            .rings
+            .iter()
+            .position(|other| other.name() == ring.name())
+        {
+            Some(index) => Ok(Some(std::mem::replace(&mut self.rings[index], ring))),
+            None => {
+                self.rings.push(ring);
+                Ok(None)
+            }
+        }
     }
 
     /// Adds an entry, replacing any entry with the same name, and returns the one it replaced.
@@ -272,6 +337,7 @@ impl Dictionary {
 
 /// A dictionary entry that could not be defined or added.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DictionaryError {
     /// The entry's SMILES does not parse.
     Smiles {
@@ -306,6 +372,22 @@ pub enum DictionaryError {
         /// Entry that tried to claim it.
         second: String,
     },
+    /// A ring template's SMILES does not parse, or is not a ring system that locants can number.
+    BadRing {
+        /// Template name.
+        ring: String,
+        /// What is wrong with it.
+        reason: String,
+    },
+    /// Two ring templates have the same formula.
+    DuplicateRing {
+        /// The formula of the parent ring system, as `C4H4N2`.
+        formula: String,
+        /// Template that already has it.
+        first: String,
+        /// Template that tried to take it.
+        second: String,
+    },
 }
 
 impl fmt::Display for DictionaryError {
@@ -328,6 +410,12 @@ impl fmt::Display for DictionaryError {
                 f,
                 "spelling {spelling:?} is claimed by both {first} and {second}"
             ),
+            Self::BadRing { ring, reason } => write!(f, "ring {ring}: {reason}"),
+            Self::DuplicateRing {
+                formula,
+                first,
+                second,
+            } => write!(f, "rings {first} and {second} share the formula {formula}"),
         }
     }
 }

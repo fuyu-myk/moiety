@@ -6,16 +6,22 @@
 //!
 //! - chains zig-zag at 120 degrees, alternating sides, along the longest path;
 //! - branches spread evenly: three neighbours at 120 degrees, four at 90;
+//! - an atom outside the rings with three or more alike branches, such as the
+//!   phosphorus of `PPh3`, is drawn first, its branches evenly spaced with one
+//!   pointing up; when they crowd each other its bonds stretch equally, up to
+//!   1.5 bond lengths, rather than bend;
 //! - atoms with a triple bond or two double bonds (`O=C=O`, allenes) are straight;
 //! - rings are regular polygons with substituents pointing away from the ring
 //!   centre, and rings fused on an edge lie on opposite sides of it;
 //! - a final pass flips or turns branches about single bonds where unbonded
-//!   atoms come too close;
+//!   atoms come too close, stretching a crowded hub's bonds only when no flip or
+//!   turn parts its branches without bending it;
 //! - disconnected components sit side by side, left to right, in input order.
 //!
 //! The output is deterministic: the same molecule always gets the same coordinates.
 
 mod geometry;
+mod hub;
 mod overlap;
 mod place;
 mod relax;
@@ -33,6 +39,8 @@ use place::Placer;
 pub const COMPONENT_GAP: f64 = 2.0;
 
 /// Coordinates for every atom of a molecule, one unit per bond length, `y` downward.
+///
+/// Bonds are one unit long, except those of a crowded hub, which may stretch to 1.5.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Layout {
     positions: Vec<Point>,
@@ -68,7 +76,8 @@ impl Layout {
 
 /// Lays out `molecule` for a skeletal drawing.
 ///
-/// Every bond is one unit long. Rings come from a smallest-ring basis, so fused
+/// Every bond is one unit long, except the bonds of a hub whose branches would
+/// crowd each other, which stretch equally up to 1.5. Rings come from a smallest-ring basis, so fused
 /// and bridged systems are accepted; shapes beyond isolated and edge-fused rings
 /// get an approximate but complete drawing.
 #[must_use]
@@ -77,12 +86,13 @@ pub fn layout(molecule: &Molecule) -> Layout {
     let rings = RingInfo::new(molecule, &adjacency);
     let components = molecule.components();
     let mut placer = Placer::new(molecule, &adjacency, &rings);
-    for component in &components {
-        placer.place(component);
-    }
+    let hubs: Vec<Option<usize>> = components
+        .iter()
+        .map(|component| placer.place(component))
+        .collect();
     let mut positions = placer.finish();
-    for component in &components {
-        overlap::resolve(&mut positions, component, molecule, &adjacency, &rings);
+    for (component, hub) in components.iter().zip(hubs) {
+        overlap::resolve(&mut positions, component, molecule, &adjacency, &rings, hub);
     }
     arrange(&mut positions, &components);
     Layout {

@@ -192,6 +192,10 @@ impl Writer<'_> {
         match 6 - self.edges[node].len() {
             1 => Ok("C6H".to_string()),
             hydrogens @ 2..=4 => Ok(format!("C6H{hydrogens}")),
+            0 => Err(WriteError::FullRing {
+                atom: self.ring(node).atoms[0],
+                ring: "benzene".to_string(),
+            }),
             _ => Err(WriteError::UnknownRing(self.ring(node).atoms[0])),
         }
     }
@@ -216,12 +220,15 @@ impl Writer<'_> {
 
     /// A substituent of `node` rooted at `root`, bracketed when it holds a ring or
     /// a dictionary group, which could otherwise be read as the ring numbered.
-    fn substituent(&self, node: usize, root: usize) -> Result<String, WriteError> {
+    pub(super) fn substituent(&self, node: usize, root: usize) -> Result<String, WriteError> {
         let path = self.longest_from(root, Some(node));
         let mut text = String::new();
         self.chain(&path, Some(node), &mut text)?;
         let nested = self.substituent_has(node, root, |n| {
-            matches!(self.nodes[n], Node::Ring(_) | Node::Group(_))
+            matches!(
+                self.nodes[n],
+                Node::Ring(_) | Node::Group(_) | Node::Template(_)
+            )
         });
         Ok(if nested { format!("({text})") } else { text })
     }
@@ -230,7 +237,7 @@ impl Writer<'_> {
     /// uncharged ones written once and counted, ordered by their first position
     /// except that one with a charged atom comes last, where the written charge
     /// can reach it.
-    fn chunks(
+    pub(super) fn chunks(
         &self,
         node: usize,
         entries: &[(u8, usize)],

@@ -1,5 +1,5 @@
-//! Benzene rings numbered by locants and the substituents written before them,
-//! with the position rules every numbered ring shares (grammar, section 6.11).
+//! Rings numbered by locants and the substituents written before them, with the
+//! position rules every numbered ring shares (grammar, sections 6.11 and 6.12).
 
 use super::{Item, Parser, Seq, SyntaxError, Unit, UnitKind};
 use crate::diagnostic::Code;
@@ -9,11 +9,15 @@ use crate::lexer::{Edge, EdgeKind, Locant};
 use crate::molecule::{AtomKind, BondOrder};
 use crate::span::Span;
 
-/// A benzene ring numbered by locants, with its substituents (grammar, section 6.11).
+/// A ring numbered by locants, with its substituents (grammar, sections 6.11 and 6.12).
 #[derive(Clone, Debug)]
 pub(crate) struct Arene {
     /// The `C6H4` of the ring.
     pub ring: Span,
+    /// The ring's template: 0 for benzene, `i + 1` for [`Dictionary::rings`]`[i]`.
+    pub template: usize,
+    /// How many atoms the ring has.
+    pub size: usize,
     pub substituents: Vec<Substituent>,
     /// Positions left for the units after the ring, lowest first. When the
     /// substituents follow the ring, these are the last substituent's, whose
@@ -39,6 +43,21 @@ pub(crate) struct Substituent {
 /// A substituent as written: its locant and its units.
 pub(super) type Written = (Span, Locant, Vec<Item>);
 
+/// A ring as written: its span, its template, and the hydrogens it has left,
+/// which are `None` for a phenyl spelling.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Ring {
+    pub span: Span,
+    pub template: usize,
+    pub hydrogens: Option<u8>,
+}
+
+/// A ring at the start of a token run, and how many tokens it takes.
+pub(super) struct RingAt {
+    pub ring: Ring,
+    pub taken: usize,
+}
+
 impl Parser<'_> {
     pub(super) fn take_locant(&mut self) -> Option<(Span, Locant)> {
         let edge = self.peek()?;
@@ -49,12 +68,12 @@ impl Parser<'_> {
         Some((edge.span, locant))
     }
 
-    /// Takes a benzene ring written `C6H4`, `C6H3`, `C6H2` or `C6H`, returning its
-    /// span and hydrogen count.
-    pub(super) fn ring(&mut self) -> Option<(Span, u8)> {
-        let (span, hydrogens, taken) = ring_at(&self.tokens[self.pos..])?;
-        self.pos += taken;
-        Some((span, hydrogens))
+    /// Takes a ring: benzene written `C6H4` to `C6H`, or a template ring written
+    /// as its formula, such as `C5H4N`.
+    pub(super) fn ring(&mut self) -> Option<Ring> {
+        let found = ring_at(&self.tokens[self.pos..], self.dictionary)?;
+        self.pos += found.taken;
+        Some(found.ring)
     }
 
     /// Takes a dictionary spelling of phenyl, such as `Ph`, returning its span.
@@ -75,21 +94,23 @@ impl Parser<'_> {
                 EdgeKind::Open(_) => depth += 1,
                 EdgeKind::Close(_) if depth == 0 => return false,
                 EdgeKind::Close(_) => depth -= 1,
-                _ if depth == 0 && ring_at(&self.tokens[index..]).is_some() => return true,
+                _ if depth == 0 && ring_at(&self.tokens[index..], self.dictionary).is_some() => {
+                    return true;
+                }
                 _ => {}
             }
         }
         false
     }
 
-    /// Whether the next tokens are a locant directly before a benzene ring, which
-    /// may follow a bond inside a sequence, as the `p-C6H4` of `HO-p-C6H4-CO2H`.
+    /// Whether the next tokens are a locant directly before a ring, which may
+    /// follow a bond inside a sequence, as the `p-C6H4` of `HO-p-C6H4-CO2H`.
     pub(super) fn bare_locant_follows(&self) -> bool {
         matches!(self.peek().map(|e| e.kind), Some(EdgeKind::Locant(_)))
-            && ring_at(&self.tokens[self.pos + 1..]).is_some()
+            && ring_at(&self.tokens[self.pos + 1..], self.dictionary).is_some()
     }
 
-    /// Parses a benzene ring numbered by locants, with the substituents written before it.
+    /// Parses a ring numbered by locants, with the substituents written before it.
     pub(super) fn arene(&mut self) -> Result<Option<Unit>, SyntaxError> {
         let Some(first) = self.take_locant() else {
             return Ok(None);
@@ -110,22 +131,26 @@ impl Parser<'_> {
                 _ => None,
             };
             let ring = match self.ring() {
-                Some((span, hydrogens)) => Some((span, Some(hydrogens))),
-                None if started && !self.ring_ahead() => self.phenyl().map(|span| (span, None)),
+                Some(ring) => Some(ring),
+                None if started && !self.ring_ahead() => self.phenyl().map(|span| Ring {
+                    span,
+                    template: 0,
+                    hydrogens: None,
+                }),
                 None => None,
             };
-            if let Some((ring, hydrogens)) = ring {
+            if let Some(ring) = ring {
                 let arene = number(
                     written,
                     bond.map(|(order, edge)| (order, edge.span)),
                     ring,
-                    hydrogens,
+                    self.dictionary,
                     false,
                 )?;
                 return Ok(Some(Unit {
                     kind: UnitKind::Arene(arene),
                     count: None,
-                    span: first.0.cover(ring),
+                    span: first.0.cover(ring.span),
                 }));
             }
             if let Some((order, edge)) = bond {
@@ -142,7 +167,7 @@ impl Parser<'_> {
                     Some((_, edge)) => Self::unexpected(edge),
                     None => {
                         let (span, _, _) = written.last().expect("never empty");
-                        mismatch(*span, "this locant has no benzene ring after it")
+                        mismatch(*span, "this locant has no ring after it")
                     }
                 });
             };
@@ -156,47 +181,78 @@ impl Parser<'_> {
     }
 }
 
-/// The span, hydrogen count and token count of a benzene ring written `C6H4`,
-/// `C6H3`, `C6H2` or `C6H` at the start of `tokens`.
-pub(super) fn ring_at(tokens: &[Edge]) -> Option<(Span, u8, usize)> {
-    let [
-        Edge {
-            kind:
-                EdgeKind::Element {
-                    element: Element::C,
-                    folded: false,
+/// The ring at the start of `tokens`: benzene written `C6H4`, `C6H3`, `C6H2` or
+/// `C6H`, or a dictionary template written as its formula with one hydrogen or
+/// more left and at least one position substituted. When several match, the
+/// longest formula wins, as `C6H2S2` over the `C6H2` of benzene.
+pub(super) fn ring_at(tokens: &[Edge], dictionary: &Dictionary) -> Option<RingAt> {
+    let found = (0..dictionary.templates()).rev().filter_map(|template| {
+        let parent = dictionary.template(template);
+        let (span, hydrogens, taken) = formula_at(tokens, parent.formula())?;
+        let most = if template == 0 {
+            4
+        } else {
+            parent.hydrogens() - 1
+        };
+        (1..=most)
+            .contains(&usize::from(hydrogens))
+            .then_some(RingAt {
+                ring: Ring {
+                    span,
+                    template,
+                    hydrogens: Some(hydrogens),
                 },
-            span: carbon,
-            ..
-        },
-        Edge {
-            kind: EdgeKind::Count(6),
-            ..
-        },
-        Edge {
-            kind:
-                EdgeKind::Element {
-                    element: Element::H,
-                    folded: false,
-                },
-            span: hydrogen,
-            ..
-        },
-        rest @ ..,
-    ] = tokens
-    else {
+                taken,
+            })
+    });
+    found.max_by_key(|at| at.taken)
+}
+
+/// The span, hydrogen count and token count of `formula` written in Hill order
+/// with a hydrogen count after the carbon, at the start of `tokens`.
+fn formula_at(tokens: &[Edge], formula: &[(Element, usize)]) -> Option<(Span, u8, usize)> {
+    let element = |at: usize, wanted: Element| {
+        matches!(
+            tokens.get(at).map(|e| e.kind),
+            Some(EdgeKind::Element { element, folded: false }) if element == wanted
+        )
+    };
+    let count = |at: usize| match tokens.get(at).map(|e| e.kind) {
+        Some(EdgeKind::Count(n)) => Some(n),
+        _ => None,
+    };
+    let mut at = 0;
+    let mut hydrogens = None;
+    for &(wanted, n) in formula {
+        if !element(at, wanted) {
+            return None;
+        }
+        at += 1;
+        if n > 1 {
+            if count(at) != u32::try_from(n).ok() {
+                return None;
+            }
+            at += 1;
+        }
+        if hydrogens.is_none() {
+            if !element(at, Element::H) {
+                return None;
+            }
+            at += 1;
+            hydrogens = Some(match count(at) {
+                Some(k) => {
+                    at += 1;
+                    k
+                }
+                None => 1,
+            });
+        }
+    }
+    if count(at).is_some() {
         return None;
-    };
-    let (end, hydrogens, taken) = match rest.first().map(|e| (e.kind, e.span)) {
-        Some((EdgeKind::Count(n @ 2..=4), span)) => (span, n, 4),
-        Some((EdgeKind::Count(_), _)) => return None,
-        _ => (*hydrogen, 1, 3),
-    };
-    Some((
-        carbon.cover(end),
-        u8::try_from(hydrogens).expect("1 to 4"),
-        taken,
-    ))
+    }
+    let span = tokens[0].span.cover(tokens[at - 1].span);
+    Some((span, u8::try_from(hydrogens?).ok()?, at))
 }
 
 /// Whether an edge is a forward spelling of a dictionary entry for phenyl that
@@ -255,68 +311,64 @@ pub(super) fn mismatch(span: Span, message: &str) -> SyntaxError {
 }
 
 /// Gives ring positions to a ring's substituents and to the units around it,
-/// checking them against the ring's hydrogens, which are `None` for a phenyl
-/// spelling. `after` is whether the substituents are written after the ring,
-/// where position 1 is never listed.
+/// checking them against the ring's template and hydrogens. `after` is whether
+/// the substituents are written after the ring. A locant written directly before
+/// the ring, the last of `written` with no units, lists its attachments.
 pub(super) fn number(
-    written: Vec<Written>,
+    mut written: Vec<Written>,
     bond: Option<(BondOrder, Span)>,
-    ring: Span,
-    hydrogens: Option<u8>,
+    ring: Ring,
+    dictionary: &Dictionary,
     after: bool,
 ) -> Result<Arene, SyntaxError> {
-    let name = match hydrogens {
-        Some(1) => "C6H".to_string(),
-        Some(h) => format!("C6H{h}"),
+    let template = dictionary.template(ring.template);
+    let implicit = ring.template == 0;
+    let name = match ring.hydrogens {
+        Some(h) => template.written(usize::from(h)),
         None => "the phenyl".to_string(),
     };
+    let total = |h: u8| template.hydrogens() - usize::from(h);
     let several = written.len() > 1;
     let relative = written
         .iter()
         .find(|(_, locant, _)| matches!(locant, Locant::Relative(_)))
         .map(|(span, _, _)| *span);
     let ortho_meta_para = |substituted: usize| match relative {
+        Some(span) if !implicit => Err(mismatch(span, "o-, m- and p- number benzene rings only")),
         Some(span) if several || substituted != 2 => Err(mismatch(
             span,
             "o-, m- and p- number the two substituents of a C6H4 ring, with no other locant",
         )),
         _ => Ok(()),
     };
-    if let Some(h) = hydrogens {
-        ortho_meta_para(6 - usize::from(h))?;
+    if let Some(h) = ring.hydrogens {
+        ortho_meta_para(total(h))?;
     }
-    let bare = written.iter().position(|(_, _, items)| items.is_empty());
-    if let Some(index) = bare {
-        let (span, locant, _) = written[index];
-        if several {
-            return Err(mismatch(
-                span,
-                "a locant directly before the ring must be its only locant",
-            ));
-        }
-        let Some(h) = hydrogens else {
-            return Err(mismatch(span, "this locant has no substituent after it"));
-        };
-        let substituted = 6 - usize::from(h);
-        let open = positions(span, locant, substituted)?;
-        if open.len() != substituted {
-            return Err(mismatch(
-                span,
-                &format!(
-                    "{name} has {substituted} substituted positions, and this locant lists {}",
-                    open.len()
-                ),
-            ));
-        }
-        return Ok(Arene {
-            ring,
-            substituents: Vec::new(),
-            open,
-            after,
-        });
-    }
-    let last = written.len() - 1;
+    let attachment = match written.last() {
+        Some((_, _, items)) if items.is_empty() => written.pop(),
+        _ => None,
+    };
     let mut taken = 0u8;
+    let take = |taken: &mut u8, span: Span, positions: &[u8]| -> Result<(), SyntaxError> {
+        for &position in positions {
+            if !template.substitutable(position) {
+                return Err(mismatch(
+                    span,
+                    &format!("{name} has no position {position} that can take a substituent"),
+                ));
+            }
+            let bit = 1 << (position - 1);
+            if *taken & bit != 0 {
+                return Err(mismatch(
+                    span,
+                    &format!("position {position} is listed twice"),
+                ));
+            }
+            *taken |= bit;
+        }
+        Ok(())
+    };
+    let last = written.len().checked_sub(1);
     let mut substituents = Vec::new();
     for (index, (span, locant, items)) in written.into_iter().enumerate() {
         let end = items.last().expect("not bare").unit.span;
@@ -339,51 +391,70 @@ pub(super) fn number(
                 ),
             ));
         }
-        if positions.contains(&1) {
+        if positions.contains(&1) && implicit {
             if after {
                 return Err(mismatch(
                     span,
                     "position 1 is where the ring bonds to what comes before it",
                 ));
             }
-            if hydrogens.is_none() {
+            if ring.hydrogens.is_none() {
                 return Err(mismatch(span, "position 1 is the phenyl's own attachment"));
             }
         }
-        for &position in &positions {
-            let bit = 1 << (position - 1);
-            if taken & bit != 0 {
-                return Err(mismatch(
-                    span,
-                    &format!("position {position} is listed twice"),
-                ));
-            }
-            taken |= bit;
-        }
+        take(&mut taken, span, &positions)?;
         substituents.push(Substituent {
             seq,
             positions,
-            bond: if index == last { bond.or(own) } else { own },
+            bond: if Some(index) == last {
+                bond.or(own)
+            } else {
+                own
+            },
             locant: span,
             span: span.cover(end),
         });
     }
-    let open = if taken & 1 == 0 { vec![1] } else { Vec::new() };
-    let numbered = taken.count_ones() as usize + open.len();
-    let substituted = hydrogens.map_or(numbered, |h| 6 - usize::from(h));
-    if hydrogens.is_none() {
+    let listed = taken.count_ones() as usize;
+    let open = match attachment {
+        Some((span, locant, _)) => {
+            let h = ring
+                .hydrogens
+                .expect("a phenyl spelling follows a substituent, never a bare locant");
+            let open = positions(span, locant, total(h).saturating_sub(listed))?;
+            take(&mut taken, span, &open)?;
+            if listed == 0 && open.len() != total(h) {
+                return Err(mismatch(
+                    span,
+                    &format!(
+                        "{name} has {} substituted positions, and this locant lists {}",
+                        total(h),
+                        open.len()
+                    ),
+                ));
+            }
+            open
+        }
+        None if implicit && taken & 1 == 0 => vec![1],
+        None => Vec::new(),
+    };
+    let numbered = listed + open.len();
+    let substituted = ring.hydrogens.map_or(numbered, total);
+    if ring.hydrogens.is_none() {
         ortho_meta_para(substituted)?;
     }
     if numbered != substituted {
         return Err(mismatch(
-            ring,
+            ring.span,
             &format!(
                 "{name} has {substituted} substituted positions, and its locants number {numbered}"
             ),
         ));
     }
     Ok(Arene {
-        ring,
+        ring: ring.span,
+        template: ring.template,
+        size: template.parent().atoms().len(),
         substituents,
         open,
         after,
@@ -394,11 +465,8 @@ pub(super) fn number(
 /// for a single copy and two otherwise.
 fn positions(span: Span, locant: Locant, copies: usize) -> Result<Vec<u8>, SyntaxError> {
     match locant {
-        Locant::Positions(0) => Err(mismatch(
-            span,
-            "a benzene ring is numbered 1 to 6, each position once",
-        )),
-        Locant::Positions(bits) => Ok((1..=6).filter(|p| bits & (1 << (p - 1)) != 0).collect()),
+        Locant::Positions(0) => Err(mismatch(span, "a locant lists positions 1 to 8, each once")),
+        Locant::Positions(bits) => Ok((1..=8).filter(|p| bits & (1 << (p - 1)) != 0).collect()),
         Locant::Relative(partner) if copies == 1 => Ok(vec![partner]),
         Locant::Relative(partner) => Ok(vec![1, partner]),
     }

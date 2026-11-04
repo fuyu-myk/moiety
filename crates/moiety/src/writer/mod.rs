@@ -5,18 +5,39 @@
 //! atom by atom along the longest chain, with side chains in parentheses.
 
 mod rings;
+mod templates;
 
 use std::collections::BTreeMap;
 
 use moiety_core::{AtomKind, BondOrder, Dictionary, Element, Entry, Molecule};
 use rings::{Ring, benzene_rings};
+use templates::{TemplateRing, template_rings};
 
 /// A molecule the writer cannot express as a condensed formula.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum WriteError {
     /// A ring that no dictionary entry matches.
     #[error("atom {0} is in a ring that no dictionary entry matches")]
     UnknownRing(usize),
+    /// A ring that benzene or a ring template numbers, with no hydrogen left for
+    /// its formula to write.
+    #[error("atom {atom} is in a {ring} ring with no hydrogen left, which no formula can number")]
+    FullRing {
+        /// An atom of the ring.
+        atom: usize,
+        /// The ring's name, as `pyridine`.
+        ring: String,
+    },
+    /// A ring template's parent ring with nothing bonded to it, which locants
+    /// cannot number and only its molecular formula names.
+    #[error("atom {atom} is in an unsubstituted {ring} ring, which locants cannot number")]
+    BareRing {
+        /// An atom of the ring.
+        atom: usize,
+        /// The ring's name, as `pyridine`.
+        ring: String,
+    },
     /// An attachment point that is not at either end of a chain.
     #[error("attachment point {0} is not at the end of a chain")]
     InnerAttachment(usize),
@@ -39,20 +60,21 @@ pub enum WriteError {
 /// # Errors
 ///
 /// Fails for rings that neither a dictionary spelling nor locants can write, such
-/// as fused rings and rings with no hydrogen left, for attachment points that are
+/// as fused rings that no template numbers, rings with no hydrogen left and a
+/// template's parent ring on its own, for attachment points that are
 /// not at the end of a chain, and for molecules that no formula the writer can
 /// produce reads back as.
 pub fn condense(molecule: &Molecule, dictionary: &Dictionary) -> Result<String, WriteError> {
     if molecule.is_empty() {
         return Err(WriteError::Empty);
     }
-    let (groups, rings) = match_groups(molecule, dictionary)?;
+    let fragments = match_groups(molecule, dictionary)?;
     let smiles = molecule.to_smiles();
-    let plain = write_components(molecule, &groups, &rings, false)?;
+    let plain = write_components(molecule, &fragments, false)?;
     if reads_back(&plain, &smiles, dictionary) {
         return Ok(plain);
     }
-    let explicit = write_components(molecule, &groups, &rings, true)?;
+    let explicit = write_components(molecule, &fragments, true)?;
     if reads_back(&explicit, &smiles, dictionary) {
         return Ok(explicit);
     }
@@ -70,13 +92,13 @@ fn reads_back(written: &str, smiles: &str, dictionary: &Dictionary) -> bool {
 /// every multiple bond out.
 fn write_components(
     molecule: &Molecule,
-    groups: &[Group],
-    rings: &[Ring],
+    fragments: &Fragments<'_>,
     explicit: bool,
 ) -> Result<String, WriteError> {
     let mut parts: Vec<String> = Vec::new();
     for component in molecule.components() {
-        parts.push(Writer::new(molecule, groups, rings, &component, explicit).write()?);
+        let writer = Writer::new(molecule, fragments, &component, explicit);
+        parts.push(writer.write()?);
     }
     let mut merged: Vec<(usize, String)> = Vec::new();
     for part in parts {
@@ -98,6 +120,13 @@ fn write_components(
         .join("."))
 }
 
+/// The dictionary groups and numbered rings found in a molecule.
+struct Fragments<'a> {
+    groups: Vec<Group>,
+    rings: Vec<Ring>,
+    templates: Vec<TemplateRing<'a>>,
+}
+
 /// A dictionary fragment found in the molecule.
 struct Group {
     atoms: Vec<usize>,
@@ -105,11 +134,12 @@ struct Group {
     reversed: Option<String>,
 }
 
-/// Finds the dictionary groups in the molecule, then the benzene rings left over.
-fn match_groups(
+/// Finds the dictionary groups in the molecule, then the benzene rings and the
+/// rings that ring templates number among what is left.
+fn match_groups<'a>(
     molecule: &Molecule,
-    dictionary: &Dictionary,
-) -> Result<(Vec<Group>, Vec<Ring>), WriteError> {
+    dictionary: &'a Dictionary,
+) -> Result<Fragments<'a>, WriteError> {
     let adjacency = molecule.adjacency();
     let in_ring = ring_atoms(molecule, &adjacency);
     let mut entries: Vec<&Entry> = dictionary
@@ -139,9 +169,14 @@ fn match_groups(
         }
     }
     let rings = benzene_rings(molecule, &adjacency, &mut covered);
+    let templates = template_rings(molecule, &adjacency, dictionary, &mut covered);
     match (0..molecule.atoms().len()).find(|&a| in_ring[a] && !covered[a]) {
         Some(atom) => Err(WriteError::UnknownRing(atom)),
-        None => Ok((groups, rings)),
+        None => Ok(Fragments {
+            groups,
+            rings,
+            templates,
+        }),
     }
 }
 
@@ -291,19 +326,21 @@ fn ring_atoms(molecule: &Molecule, adjacency: &[Vec<(usize, usize)>]) -> Vec<boo
     in_ring
 }
 
-/// A node of the contracted tree: one atom, one dictionary group, or one
-/// benzene ring written with locants.
+/// A node of the contracted tree: one atom, one dictionary group, one benzene
+/// ring written with locants, or one ring a ring template numbers.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Node {
     Atom(usize),
     Group(usize),
     Ring(usize),
+    Template(usize),
 }
 
 struct Writer<'a> {
     molecule: &'a Molecule,
     groups: &'a [Group],
     rings: &'a [Ring],
+    templates: &'a [TemplateRing<'a>],
     nodes: Vec<Node>,
     node_of: BTreeMap<usize, usize>,
     edges: Vec<Vec<(usize, BondOrder)>>,
@@ -315,11 +352,15 @@ struct Writer<'a> {
 impl<'a> Writer<'a> {
     fn new(
         molecule: &'a Molecule,
-        groups: &'a [Group],
-        rings: &'a [Ring],
+        fragments: &'a Fragments<'a>,
         component: &[usize],
         explicit: bool,
     ) -> Self {
+        let (groups, rings, templates) = (
+            fragments.groups.as_slice(),
+            fragments.rings.as_slice(),
+            fragments.templates.as_slice(),
+        );
         let mut node_of = BTreeMap::new();
         let mut nodes = Vec::new();
         for (g, group) in groups.iter().enumerate() {
@@ -336,6 +377,14 @@ impl<'a> Writer<'a> {
                     node_of.insert(atom, nodes.len());
                 }
                 nodes.push(Node::Ring(r));
+            }
+        }
+        for (t, ring) in templates.iter().enumerate() {
+            if component.contains(&ring.numberings[0][0]) {
+                for &atom in &ring.numberings[0] {
+                    node_of.insert(atom, nodes.len());
+                }
+                nodes.push(Node::Template(t));
             }
         }
         for &atom in component {
@@ -358,13 +407,14 @@ impl<'a> Writer<'a> {
             .iter()
             .filter_map(|n| match n {
                 Node::Atom(a) => Some(i32::from(molecule.atoms()[*a].charge)),
-                Node::Group(_) | Node::Ring(_) => None,
+                Node::Group(_) | Node::Ring(_) | Node::Template(_) => None,
             })
             .sum();
         Self {
             molecule,
             groups,
             rings,
+            templates,
             nodes,
             node_of,
             edges,
@@ -438,7 +488,7 @@ impl<'a> Writer<'a> {
                         .is_some_and(|e| e.1 == BondOrder::Double);
                 terminal && (halogen || oxo)
             }
-            Node::Group(_) | Node::Ring(_) => false,
+            Node::Group(_) | Node::Ring(_) | Node::Template(_) => false,
         }
     }
 
@@ -516,13 +566,28 @@ impl<'a> Writer<'a> {
         for (i, &node) in path.iter().enumerate() {
             let previous = if i == 0 { parent } else { Some(path[i - 1]) };
             let next = path.get(i + 1).copied();
-            if let Node::Ring(_) = self.nodes[node] {
-                match previous {
-                    Some(previous) => return self.ring_after(node, previous, &path[i + 1..], out),
-                    None => self.ring_first(node, next, out)?,
+            match self.nodes[node] {
+                Node::Ring(_) => {
+                    match previous {
+                        Some(previous) => {
+                            return self.ring_after(node, previous, &path[i + 1..], out);
+                        }
+                        None => self.ring_first(node, next, out)?,
+                    }
+                    self.bond_to_next(path, i, out);
+                    continue;
                 }
-                self.bond_to_next(path, i, out);
-                continue;
+                Node::Template(_) => {
+                    match previous {
+                        Some(previous) => {
+                            return self.template_after(node, previous, &path[i + 1..], out);
+                        }
+                        None => self.template_first(node, next, out)?,
+                    }
+                    self.bond_to_next(path, i, out);
+                    continue;
+                }
+                Node::Atom(_) | Node::Group(_) => {}
             }
             push_label(
                 out,
@@ -592,7 +657,9 @@ impl<'a> Writer<'a> {
 
     fn label(&self, node: usize, first: bool, last: bool) -> String {
         match self.nodes[node] {
-            Node::Ring(_) => unreachable!("rings are written by ring_after and ring_first"),
+            Node::Ring(_) | Node::Template(_) => {
+                unreachable!("rings are written by their own writers")
+            }
             Node::Group(g) => {
                 let group = &self.groups[g];
                 match (&group.reversed, first && !last) {
@@ -697,154 +764,4 @@ fn charge_suffix(charge: i32) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{default_dictionary, interpret};
-
-    fn write(smiles: &str) -> String {
-        let molecule = moiety_core::smiles::parse(smiles).unwrap();
-        condense(&molecule, default_dictionary()).unwrap()
-    }
-
-    fn round_trips(smiles: &str) {
-        let molecule = moiety_core::smiles::parse(smiles).unwrap();
-        let written = condense(&molecule, default_dictionary()).unwrap();
-        let top = interpret(&written).top().map(|r| r.smiles.clone());
-        assert_eq!(
-            top,
-            Some(molecule.to_smiles()),
-            "{smiles} written as {written}"
-        );
-    }
-
-    #[test]
-    fn writes_natural_condensed_formulas() {
-        assert_eq!(write("CCO"), "CH3CH2OH");
-        assert_eq!(write("CC(=O)O"), "CH3COOH");
-        assert_eq!(write("CC(C)C"), "CH3CH(CH3)CH3");
-        assert_eq!(write("OCc1ccccc1"), "BnOH");
-        assert_eq!(write("C=CC"), "CH2=CHCH3");
-        assert_eq!(write("O.O.O"), "3H2O");
-        assert_eq!(write("[Na+].[Cl-]"), "Na+.Cl-");
-        assert_eq!(write("c1ccc(-c2ccccn2)cc1"), "Ph-2-C5H4N");
-        assert_eq!(write("Cc1ccccn1.Cc1ccccn1"), "2-C5H4NCH3.2-C5H4NCH3");
-        assert_eq!(write("*C.*C"), "-CH3.-CH3");
-    }
-
-    #[test]
-    fn round_trips_common_molecules() {
-        for smiles in [
-            "CCCCCC",
-            "CC(C)(C)O",
-            "OC(=O)CCC(=O)O",
-            "CC(=O)OCC",
-            "C[N+](=O)[O-]",
-            "Cc1ccc(S(=O)(=O)Cl)cc1",
-            "FC(F)(F)C(=O)O",
-            "CN(C)C",
-            "C#CC",
-            "*CC(=O)O",
-            "OCC(O)CO",
-            "CC(C)CC(C)(C)C",
-            "O=CCOC(C=O)=O",
-            "c1ccc(-c2ccccn2)cc1",
-            "OCc1cccnc1",
-            "CC(=O)c1cccs1",
-            "c1ccc2cc(C(F)(F)F)ccc2c1",
-            "Cc1ccccn1.Cc1ccccn1",
-            "*c1ccccn1.*c1ccccn1",
-        ] {
-            round_trips(smiles);
-        }
-    }
-
-    #[test]
-    fn writes_benzene_rings_with_locants() {
-        assert_eq!(write("CCc1ccc(C=O)cc1"), "CH3CH2C6H4-4-CHO");
-        assert_eq!(write("Clc1ccc(Cl)cc1"), "1,4-Cl2C6H4");
-        assert_eq!(write("c1ccccc1"), "C6H6");
-        assert_eq!(write("*c1ccc(*)cc1"), "-1,4-C6H4-");
-        assert_eq!(write("*c1cc(C(F)(F)F)cc(C(F)(F)F)c1"), "-C6H3-3,5-(CF3)2");
-    }
-
-    #[test]
-    fn round_trips_substituted_benzene_rings() {
-        for smiles in [
-            "Cc1ccc(C=O)cc1",
-            "COc1ccc(C=O)cc1",
-            "OC(=O)c1ccc(Cl)cc1Cl",
-            "Clc1ccc(Cl)cc1",
-            "Clc1ccccc1Cl",
-            "Cc1cc(C)cc(C)c1",
-            "c1ccccc1",
-            "*c1ccc(*)cc1",
-            "*Cc1ccc(*)cc1",
-            "*c1ccc(OC)cc1",
-            "*c1cc(C(F)(F)F)cc(C(F)(F)F)c1",
-            "CC1(C)OB(c2ccc(Cl)cc2)OC1(C)C",
-            "Nc1ccc(N)cc1",
-            "Oc1ccc(-c2ccc(O)cc2)cc1",
-            "Fc1ccc(P(c2ccc(F)cc2)c2ccc(F)cc2)cc1",
-            "O=C(O)c1ccccc1C(=O)O",
-            "OC(=O)c1cc(Br)cc(C(=O)O)c1",
-            "C[N+](C)(C)c1ccc(OC)cc1",
-            "COc1ccc(CCN)cc1OC",
-            "Cc1cc(Cl)c(O)c(Cl)c1",
-            "CCOC(=O)c1ccc(N)cc1",
-            "O=[N+]([O-])c1ccc(Cl)cc1",
-            "Cc1cc(ccc1CC=N)N",
-            "Cc1cc(cc(c1SC=N)Cl)O",
-            "CC(=O)Oc1ccc(C)cc1C=C",
-            "CCC(CC(=O)Br)COC",
-        ] {
-            round_trips(smiles);
-        }
-    }
-
-    #[test]
-    fn writes_rings_between_attachment_points() {
-        assert_eq!(write("*c1ccc(-c2ccc(*)cc2)cc1"), "-1,4-C6H4-1,4-C6H4-");
-        round_trips("*c1ccc(C(=O)c2ccc(*)cc2)cc1");
-    }
-
-    #[test]
-    fn never_writes_a_formula_that_reads_back_differently() {
-        for smiles in [
-            "[O-]c1ccc(SC)cc1",
-            "[O-]c1ccc(Cl)cc1Cl",
-            "OC(=O)c1ccc([O-])cc1[O-]",
-            "*c1ccc(C*)cc1[NH3+]",
-            "*c1c(Cl)cc(*)cc1Cl",
-        ] {
-            let molecule = moiety_core::smiles::parse(smiles).unwrap();
-            if let Ok(written) = condense(&molecule, default_dictionary()) {
-                let top = interpret(&written).top().map(|r| r.smiles.clone());
-                assert_eq!(
-                    top,
-                    Some(molecule.to_smiles()),
-                    "{smiles} written as {written}"
-                );
-            }
-        }
-        let biphenylene = moiety_core::smiles::parse("Clc1ccc2-c3ccc(Cl)cc3-c2c1").unwrap();
-        assert!(matches!(
-            condense(&biphenylene, default_dictionary()),
-            Err(WriteError::UnknownRing(_))
-        ));
-    }
-
-    #[test]
-    fn rejects_unknown_rings_and_inner_attachments() {
-        let ring = moiety_core::smiles::parse("C1CCCC1").unwrap();
-        assert!(matches!(
-            condense(&ring, default_dictionary()),
-            Err(WriteError::UnknownRing(_))
-        ));
-        assert_eq!(write("*CC(*)C"), "-CH2CH(CH3)-");
-        let inner = moiety_core::smiles::parse("*CC(*)C*").unwrap();
-        assert!(matches!(
-            condense(&inner, default_dictionary()),
-            Err(WriteError::InnerAttachment(_))
-        ));
-    }
-}
+mod tests;

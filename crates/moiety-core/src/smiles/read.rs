@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{SmilesError, aromatic_symbol, default_valence};
+use super::{SmilesError, aromatic_symbol, implicit_hydrogens};
 use crate::aromatic::perceive_aromaticity;
 use crate::element::Element;
 use crate::molecule::{Atom, BondOrder, Molecule};
@@ -10,7 +10,9 @@ const MAX_SMILES_CHARGE: i8 = 15;
 /// Reads a SMILES string into a molecule.
 ///
 /// Kekulé six-membered rings are perceived as aromatic, so `C1=CC=CC=C1` and
-/// `c1ccccc1` read as the same molecule.
+/// `c1ccccc1` read as the same molecule. A bond between aromatic atoms that lies
+/// on no ring is single, so the rings of biphenyl may be joined without `-`, as
+/// in `c1ccc(cc1)c1ccccc1`.
 ///
 /// # Errors
 ///
@@ -346,19 +348,69 @@ impl Reader<'_> {
     }
 
     fn finish(mut self) -> Result<Molecule, SmilesError> {
+        for (index, bridge) in bridges(&self.molecule).into_iter().enumerate() {
+            if bridge && self.molecule.bonds()[index].order == BondOrder::Aromatic {
+                self.molecule.set_bond_order(index, BondOrder::Single);
+            }
+        }
         for index in 0..self.molecule.atoms().len() {
             if !self.implicit[index] {
                 continue;
             }
             let atom = self.molecule.atoms()[index];
-            let used = self.molecule.bond_valence(index) + u8::from(atom.aromatic);
+            let bonds = self.molecule.bond_valence(index);
             let element = atom.element().expect("implicit atoms are elements");
-            let valence = default_valence(element.symbol(), used)
-                .expect("implicit atoms are in the organic subset");
-            self.molecule.atoms_mut()[index].hydrogens = valence.saturating_sub(used);
+            self.molecule.atoms_mut()[index].hydrogens =
+                implicit_hydrogens(element.symbol(), bonds, atom.aromatic)
+                    .expect("implicit atoms are in the organic subset");
         }
         Ok(self.molecule)
     }
+}
+
+/// For each bond, whether it lies on no ring, found by an iterative depth-first
+/// search that compares each atom's discovery order with the lowest order its
+/// subtree reaches.
+fn bridges(molecule: &Molecule) -> Vec<bool> {
+    let adjacency = molecule.adjacency();
+    let unseen = usize::MAX;
+    let mut order = vec![unseen; adjacency.len()];
+    let mut low = vec![0; adjacency.len()];
+    let mut bridge = vec![false; molecule.bonds().len()];
+    let mut counter = 0;
+    for root in 0..adjacency.len() {
+        if order[root] != unseen {
+            continue;
+        }
+        order[root] = counter;
+        low[root] = counter;
+        counter += 1;
+        let mut stack: Vec<(usize, Option<usize>, usize)> = vec![(root, None, 0)];
+        while let Some(top) = stack.last_mut() {
+            let (atom, via) = (top.0, top.1);
+            if let Some(&(next, bond)) = adjacency[atom].get(top.2) {
+                top.2 += 1;
+                if Some(bond) == via {
+                    continue;
+                }
+                if order[next] == unseen {
+                    order[next] = counter;
+                    low[next] = counter;
+                    counter += 1;
+                    stack.push((next, Some(bond), 0));
+                } else {
+                    low[atom] = low[atom].min(order[next]);
+                }
+                continue;
+            }
+            stack.pop();
+            if let (Some(&(parent, _, _)), Some(bond)) = (stack.last(), via) {
+                low[parent] = low[parent].min(low[atom]);
+                bridge[bond] = low[atom] > order[parent];
+            }
+        }
+    }
+    bridge
 }
 
 #[cfg(test)]
@@ -386,6 +438,19 @@ mod tests {
         assert_eq!(molecule.atoms()[3].charge, -1);
         let benzene = parse("c1ccccc1").unwrap();
         assert!(benzene.atoms().iter().all(|a| a.hydrogens == 1));
+        for (smiles, hydrogens) in [
+            ("s1cccc1", vec![0, 1, 1, 1, 1]),
+            ("o1cccc1", vec![0, 1, 1, 1, 1]),
+            ("Cn1cccc1", vec![3, 0, 1, 1, 1, 1]),
+        ] {
+            let counts: Vec<u8> = parse(smiles)
+                .unwrap()
+                .atoms()
+                .iter()
+                .map(|a| a.hydrogens)
+                .collect();
+            assert_eq!(counts, hydrogens, "{smiles}");
+        }
     }
 
     #[test]
@@ -395,6 +460,42 @@ mod tests {
         assert_eq!((atoms[0].hydrogens, atoms[0].charge), (4, 1));
         assert_eq!(atoms[1].charge, 2);
         assert_eq!((atoms[2].hydrogens, atoms[2].charge), (3, -1));
+    }
+
+    #[test]
+    fn finds_bonds_on_no_ring() {
+        let molecule = parse("C1CC1CC.C2CCC2C2CC2").unwrap();
+        let bridges = bridges(&molecule);
+        let on_no_ring: Vec<(usize, usize)> = molecule
+            .bonds()
+            .iter()
+            .zip(&bridges)
+            .filter(|(_, bridge)| **bridge)
+            .map(|(bond, _)| (bond.a, bond.b))
+            .collect();
+        assert_eq!(on_no_ring, [(2, 3), (3, 4), (8, 9)]);
+    }
+
+    #[test]
+    fn bonds_between_aromatic_rings_are_single() {
+        for (implied, explicit) in [
+            ("c1ccc(cc1)c1ccccc1", "c1ccc(-c2ccccc2)cc1"),
+            ("c1ccc(cc1)c1ccccn1", "c1ccc(-c2ccccn2)cc1"),
+            ("c1ccc(cc1)c1nccs1", "c1ccc(-c2nccs2)cc1"),
+        ] {
+            let molecule = parse(implied).unwrap();
+            let singles = molecule
+                .bonds()
+                .iter()
+                .filter(|b| b.order == BondOrder::Single)
+                .count();
+            assert_eq!(singles, 1, "{implied}");
+            assert_eq!(
+                molecule.to_smiles(),
+                parse(explicit).unwrap().to_smiles(),
+                "{implied}"
+            );
+        }
     }
 
     #[test]

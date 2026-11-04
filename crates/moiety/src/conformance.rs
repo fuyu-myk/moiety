@@ -104,9 +104,10 @@ pub struct Suite {
 
 /// A suite file that could not be read.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum SuiteError {
     /// The file is not valid TOML or does not have the suite layout.
-    #[error("conformance suite is malformed: {0}")]
+    #[error("conformance suite is malformed")]
     Toml(#[from] toml::de::Error),
     /// An expected SMILES string does not parse.
     #[error("case {id}: expected SMILES {smiles:?} does not parse: {error}")]
@@ -511,7 +512,8 @@ pub fn read_smiles_list(text: &str) -> Result<Vec<Molecule>, (usize, smiles::Smi
 /// Carbon forms the backbone; oxygen, nitrogen, sulfur and halogens attach to carbon,
 /// and carbon may also attach to oxygen, nitrogen and sulfur, giving ethers, amines
 /// and thioethers. Some carbon-carbon and carbon-heteroatom bonds are multiple.
-/// One molecule in four grows from a benzene ring instead of a single carbon.
+/// One molecule in four grows from a benzene ring instead of a single carbon, and
+/// one in eight each from pyridine and from thiophene.
 #[must_use]
 pub fn generated_corpus(count: usize, seed: u64) -> Vec<Molecule> {
     let mut rng = XorShift(seed.max(1));
@@ -556,20 +558,26 @@ fn random_molecule(rng: &mut XorShift) -> Molecule {
     ];
     let mut molecule = Molecule::new();
     let mut free: Vec<u8> = Vec::new();
-    if rng.below(4) == 0 {
-        for _ in 0..6 {
-            molecule.add_atom(Atom {
-                aromatic: true,
-                ..Atom::new(Element::C)
-            });
-        }
-        free.extend([1; 6]);
-        for i in 0..6 {
-            molecule.add_bond(i, (i + 1) % 6, moiety_core::BondOrder::Aromatic);
-        }
-    } else {
-        molecule.add_atom(Atom::new(Element::C));
+    const C: Element = Element::C;
+    let ring: &[Element] = match rng.below(8) {
+        0 | 1 => &[C, C, C, C, C, C],
+        2 => &[Element::N, C, C, C, C, C],
+        3 => &[Element::S, C, C, C, C],
+        _ => &[],
+    };
+    if ring.is_empty() {
+        molecule.add_atom(Atom::new(C));
         free.push(4);
+    }
+    for &element in ring {
+        molecule.add_atom(Atom {
+            aromatic: true,
+            ..Atom::new(element)
+        });
+        free.push(u8::from(element == C));
+    }
+    for i in 0..ring.len() {
+        molecule.add_bond(i, (i + 1) % ring.len(), moiety_core::BondOrder::Aromatic);
     }
     for _ in 0..1 + rng.below(9) {
         let mut roll = rng.below(100);
