@@ -13,6 +13,7 @@
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use super::geometry::{EPSILON, Point, centroid, circumradius};
+use super::macrocycle;
 use super::quality::Frame;
 use super::relax::relax;
 use crate::graph::Adjacency;
@@ -45,7 +46,7 @@ pub(super) fn layout_system(
     for start in other_starts(&rings, first) {
         let candidate = template(&rings, &start, &frame, adjacency.len());
         let quality = frame.quality(&candidate);
-        if quality < drawn {
+        if quality.beats(&drawn) {
             (local, drawn) = (candidate, quality);
         }
     }
@@ -54,7 +55,7 @@ pub(super) fn layout_system(
     }
     let mut relaxed = local.clone();
     relax(&system.atoms, adjacency, &mut relaxed);
-    if frame.quality(&relaxed) < drawn {
+    if frame.quality(&relaxed).beats(&drawn) {
         relaxed
     } else {
         local
@@ -70,7 +71,7 @@ fn template(
 ) -> Vec<Option<Point>> {
     let mut local = vec![None; atom_count];
     let mut done = vec![false; rings.len()];
-    place_first(rings, first, &mut local);
+    place_first(rings, first, frame, &mut local);
     while let Some(next) = next_ring(rings, &done, &local) {
         place_ring(rings[next], frame, &mut local);
         done[next] = true;
@@ -160,7 +161,17 @@ fn shared(a: &[usize], b: &[usize]) -> usize {
 
 /// Places `rings[first]` centred on the origin, turned so that its first fused
 /// edge is vertical on the right, or pointing up when nothing is fused to it.
-fn place_first(rings: &[&[usize]], ring: &[usize], local: &mut [Option<Point>]) {
+fn place_first(rings: &[&[usize]], ring: &[usize], frame: &Frame, local: &mut [Option<Point>]) {
+    let inward: Vec<u32> = ring
+        .iter()
+        .map(|&a| frame.inward_cost(a, ring, rings))
+        .collect();
+    if let Some(points) = macrocycle::outline(&inward) {
+        for (&atom, point) in ring.iter().zip(points) {
+            local[atom] = Some(point);
+        }
+        return;
+    }
     let n = ring.len();
     let step = TAU / n as f64;
     let fused_edge = (0..n).find(|&i| {

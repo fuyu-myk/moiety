@@ -2,7 +2,7 @@
 //! will hang from it, so that candidate drawings can be compared.
 
 use super::geometry::{EPSILON, Point, largest_gap};
-use crate::graph::Adjacency;
+use crate::graph::{self, Adjacency};
 use crate::rings::RingSystem;
 
 /// Atoms of a ring system closer than this, in bond lengths, are crowded.
@@ -18,22 +18,36 @@ const STRETCH: f64 = 0.25;
 /// their first drawing, since scoring compares every pair of bonds.
 const MAX_SCORED_BONDS: usize = 600;
 
+/// Largest branch size counted toward the cost of pointing an atom into its ring.
+const BRANCH_CAP: usize = 20;
+
+/// Cost of pointing into its ring an atom that bonds to another ring of the system.
+const FUSED_INWARD: u32 = 400;
+
 /// Bond lengths a drawing may use at all, in bond lengths.
 const LENGTHS: std::ops::RangeInclusive<f64> = 0.55..=1.6;
 
 /// How legible a drawing is, worst first: atoms piled on one another and bonds
 /// outside [`LENGTHS`], then bonds that cross, then atoms closer than
-/// [`CLEARANCE`], then how far bonds miss unit length beyond [`STRETCH`].
-/// Smaller is better.
+/// [`CLEARANCE`] to an atom or a stub, then how far bonds miss unit length
+/// beyond [`STRETCH`], and last stubs closer than [`CLEARANCE`] to each other,
+/// which the placement of substituents can still ease. Smaller is better.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub(super) struct Quality {
     broken: usize,
     crossings: usize,
     crowded: usize,
     stretch: f64,
+    cramped: usize,
 }
 
 impl Quality {
+    /// Whether this drawing is better than `other` leaving stubs aside.
+    pub(super) fn beats(&self, other: &Self) -> bool {
+        let key = |q: &Self| (q.broken, q.crossings, q.crowded, q.stretch);
+        key(self) < key(other)
+    }
+
     /// The piled atoms, bad bond lengths and crossing bonds, the faults no
     /// placement should accept.
     pub(super) fn severe(&self) -> (usize, usize) {
@@ -54,6 +68,7 @@ pub(super) struct Frame {
     bonds: Vec<(usize, usize)>,
     inside: Vec<Vec<usize>>,
     outside: Vec<usize>,
+    branches: Vec<usize>,
 }
 
 impl Frame {
@@ -61,6 +76,7 @@ impl Frame {
         let member = |atom: usize| system.atoms.binary_search(&atom).is_ok();
         let mut inside = vec![Vec::new(); adjacency.len()];
         let mut outside = vec![0; adjacency.len()];
+        let mut branches = vec![0; adjacency.len()];
         let mut bonds = Vec::new();
         for &a in &system.atoms {
             for &(b, _) in &adjacency[a] {
@@ -71,6 +87,7 @@ impl Frame {
                     }
                 } else {
                     outside[a] += 1;
+                    branches[a] += graph::side(adjacency, b, a).len().min(BRANCH_CAP);
                 }
             }
         }
@@ -79,6 +96,21 @@ impl Frame {
             bonds,
             inside,
             outside,
+            branches,
+        }
+    }
+
+    /// What it costs to point `atom` of `ring` into the ring: most when it lies on
+    /// or bonds to another of the system's `rings`, otherwise ten for each atom
+    /// of its substituents up to [`BRANCH_CAP`] per substituent, nothing without any.
+    pub(super) fn inward_cost(&self, atom: usize, ring: &[usize], rings: &[&[usize]]) -> u32 {
+        let shared = rings
+            .iter()
+            .any(|other| *other != ring && other.contains(&atom));
+        if shared || self.inside[atom].iter().any(|n| !ring.contains(n)) {
+            FUSED_INWARD
+        } else {
+            10 * u32::try_from(self.branches[atom]).unwrap_or(u32::MAX / 100)
         }
     }
 
@@ -90,6 +122,7 @@ impl Frame {
     /// The quality of the placed part of `local`, stubs included.
     pub(super) fn quality(&self, local: &[Option<Point>]) -> Quality {
         let mut points: Vec<Point> = self.atoms.iter().filter_map(|&a| local[a]).collect();
+        let atoms = points.len();
         let mut segments: Vec<(usize, usize, Point, Point)> = self
             .bonds
             .iter()
@@ -111,14 +144,15 @@ impl Frame {
                 stub -= 1;
             }
         }
-        let near = |limit: f64| {
+        // Pairs closer than `limit`; a pair of stubs counts only when `stubs` is set.
+        // Pairs closer than `limit` that `counted` accepts, given whether each is an atom.
+        let near = |limit: f64, counted: fn(bool, bool) -> bool| {
             points
                 .iter()
                 .enumerate()
                 .map(|(i, p)| {
-                    points[i + 1..]
-                        .iter()
-                        .filter(|q| p.distance(**q) < limit)
+                    (i + 1..points.len())
+                        .filter(|&j| counted(i < atoms, j < atoms) && p.distance(points[j]) < limit)
                         .count()
                 })
                 .sum()
@@ -136,10 +170,11 @@ impl Frame {
             })
             .sum();
         Quality {
-            broken: near(PILED) + bad_lengths,
+            broken: near(PILED, |a, b| a || b) + bad_lengths,
             crossings,
-            crowded: near(CLEARANCE),
+            crowded: near(CLEARANCE, |a, b| a || b),
             stretch,
+            cramped: near(CLEARANCE, |a, b| !a && !b),
         }
     }
 

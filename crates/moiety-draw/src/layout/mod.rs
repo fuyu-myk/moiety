@@ -13,6 +13,9 @@
 //! - atoms with a triple bond or two double bonds (`O=C=O`, allenes) are straight;
 //! - rings are regular polygons with substituents pointing away from the ring
 //!   centre, and rings fused on an edge lie on opposite sides of it;
+//! - a ring of 12 to 46 atoms is a closed zig-zag on a hexagonal lattice, the
+//!   way macrocycles are drawn, with the atoms that carry other rings or the
+//!   largest substituents on its outward corners;
 //! - a bridge across a ring is an arc or a shallow bow inside it, chosen so that
 //!   no bonds cross and no atom, or substituent, lands on another; a ring system
 //!   that still draws badly is started from another ring, then relaxed, and the
@@ -26,6 +29,7 @@
 
 mod geometry;
 mod hub;
+mod macrocycle;
 mod overlap;
 mod place;
 mod quality;
