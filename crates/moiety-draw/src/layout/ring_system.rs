@@ -3,22 +3,23 @@
 //! The first ring is a regular polygon. Every further ring is built onto the
 //! atoms already placed: a ring fused on an edge becomes the regular polygon on
 //! the far side of that edge, a spiro ring a polygon pointing away from the
-//! system, and the unplaced atoms of any other ring an arc of unit chords
-//! between the placed atoms that bound them. Systems that this cannot draw
-//! without atoms piling up, such as cages, are relaxed by stress majorization.
+//! system, and the unplaced atoms of any other ring a bridge between the placed
+//! atoms that bound them. A bridge is an arc of unit chords or a shallow bow of
+//! shorter ones, on either side, whichever crosses and crowds the atoms already
+//! placed least. Systems that this draws with crossing bonds or atoms piling up,
+//! such as cages, are also relaxed by stress majorization, and the better of the
+//! two drawings is kept.
 
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use super::geometry::{EPSILON, Point, centroid, circumradius};
+use super::quality::Frame;
 use super::relax::relax;
 use crate::graph::Adjacency;
 use crate::rings::{RingInfo, RingSystem};
 
-/// Atoms of a ring system closer than this, in bond lengths, are crowded.
-const CLEARANCE: f64 = 0.5;
-
-/// A template bond that misses unit length by more than this is stretched.
-const STRETCH: f64 = 0.25;
+/// Height of a bridge drawn as a bow across a ring, in bond lengths.
+const BOW: f64 = 0.3;
 
 /// Local positions of the atoms of `system`, indexed by atom; atoms outside the system are `None`.
 pub(super) fn layout_system(
@@ -26,44 +27,119 @@ pub(super) fn layout_system(
     system: &RingSystem,
     adjacency: &Adjacency,
 ) -> Vec<Option<Point>> {
-    let mut local = template(info, system, adjacency.len());
-    let distance = |a: usize, b: usize| match (local[a], local[b]) {
-        (Some(p), Some(q)) => p.distance(q),
-        _ => f64::INFINITY,
-    };
-    let crowded = system.atoms.iter().enumerate().any(|(i, &a)| {
-        system.atoms[i + 1..]
-            .iter()
-            .any(|&b| distance(a, b) < CLEARANCE)
-    });
-    let stretched = system.atoms.iter().any(|&a| {
-        adjacency[a]
-            .iter()
-            .any(|&(b, _)| local[b].is_some() && (distance(a, b) - 1.0).abs() > STRETCH)
-    });
-    if crowded || stretched {
-        relax(&system.atoms, adjacency, &mut local);
-    }
-    local
-}
-
-/// Local positions from ring templates alone.
-fn template(info: &RingInfo, system: &RingSystem, atom_count: usize) -> Vec<Option<Point>> {
+    let frame = Frame::new(system, adjacency);
     let rings: Vec<&[usize]> = system
         .rings
         .iter()
         .map(|&index| info.rings()[index].as_slice())
         .collect();
+    let first = first_ring(&rings);
+    let mut local = template(&rings, rings[first], &frame, adjacency.len());
+    if !frame.scored() {
+        return local;
+    }
+    let mut drawn = frame.quality(&local);
+    if drawn.is_clean() {
+        return local;
+    }
+    for start in other_starts(&rings, first) {
+        let candidate = template(&rings, &start, &frame, adjacency.len());
+        let quality = frame.quality(&candidate);
+        if quality < drawn {
+            (local, drawn) = (candidate, quality);
+        }
+    }
+    if drawn.is_clean() {
+        return local;
+    }
+    let mut relaxed = local.clone();
+    relax(&system.atoms, adjacency, &mut relaxed);
+    if frame.quality(&relaxed) < drawn {
+        relaxed
+    } else {
+        local
+    }
+}
+
+/// Local positions from ring templates alone, starting from the cycle `first`.
+fn template(
+    rings: &[&[usize]],
+    first: &[usize],
+    frame: &Frame,
+    atom_count: usize,
+) -> Vec<Option<Point>> {
     let mut local = vec![None; atom_count];
     let mut done = vec![false; rings.len()];
-    let first = first_ring(&rings);
-    place_first(&rings, first, &mut local);
-    done[first] = true;
-    while let Some(next) = next_ring(&rings, &done, &local) {
-        place_ring(rings[next], &mut local);
+    place_first(rings, first, &mut local);
+    while let Some(next) = next_ring(rings, &done, &local) {
+        place_ring(rings[next], frame, &mut local);
         done[next] = true;
     }
     local
+}
+
+/// Most other starting cycles tried for one ring system.
+const STARTS: usize = 24;
+
+/// Starting cycles to try besides `rings[first]`: the other rings, then each
+/// cycle that two rings sharing a path make together, such as the six-membered
+/// envelope of norbornane's two five-membered rings.
+fn other_starts(rings: &[&[usize]], first: usize) -> Vec<Vec<usize>> {
+    let mut starts: Vec<Vec<usize>> = (0..rings.len())
+        .filter(|&i| i != first)
+        .map(|i| rings[i].to_vec())
+        .collect();
+    for i in 0..rings.len() {
+        for j in i + 1..rings.len() {
+            starts.extend(joined(rings[i], rings[j]));
+        }
+    }
+    starts.truncate(STARTS);
+    starts
+}
+
+/// The single cycle that rings `a` and `b` enclose together, when they share a
+/// path of at least one bond: the bonds of either ring but not both.
+fn joined(a: &[usize], b: &[usize]) -> Option<Vec<usize>> {
+    let edges = |ring: &[usize]| -> Vec<(usize, usize)> {
+        (0..ring.len())
+            .map(|i| {
+                let (x, y) = (ring[i], ring[(i + 1) % ring.len()]);
+                (x.min(y), x.max(y))
+            })
+            .collect()
+    };
+    let (ea, eb) = (edges(a), edges(b));
+    if !ea.iter().any(|e| eb.contains(e)) {
+        return None;
+    }
+    let rest: Vec<(usize, usize)> = ea
+        .iter()
+        .chain(&eb)
+        .filter(|e| !(ea.contains(e) && eb.contains(e)))
+        .copied()
+        .collect();
+    let start = rest.first()?.0;
+    let mut cycle = vec![start];
+    let (mut previous, mut current) = (usize::MAX, start);
+    loop {
+        let next = rest
+            .iter()
+            .find_map(|&(x, y)| match (x == current, y == current) {
+                (true, _) if y != previous => Some(y),
+                (_, true) if x != previous => Some(x),
+                _ => None,
+            })?;
+        if next == start {
+            break;
+        }
+        if cycle.contains(&next) {
+            return None;
+        }
+        cycle.push(next);
+        (previous, current) = (current, next);
+    }
+    (cycle.len() == rest.len()).then_some(cycle)
 }
 
 /// The ring fused to the most others, then the largest, then the earliest.
@@ -84,16 +160,14 @@ fn shared(a: &[usize], b: &[usize]) -> usize {
 
 /// Places `rings[first]` centred on the origin, turned so that its first fused
 /// edge is vertical on the right, or pointing up when nothing is fused to it.
-fn place_first(rings: &[&[usize]], first: usize, local: &mut [Option<Point>]) {
-    let ring = rings[first];
+fn place_first(rings: &[&[usize]], ring: &[usize], local: &mut [Option<Point>]) {
     let n = ring.len();
     let step = TAU / n as f64;
     let fused_edge = (0..n).find(|&i| {
         let (a, b) = (ring[i], ring[(i + 1) % n]);
         rings
             .iter()
-            .enumerate()
-            .any(|(j, other)| j != first && other.contains(&a) && other.contains(&b))
+            .any(|other| *other != ring && other.contains(&a) && other.contains(&b))
     });
     let base = match fused_edge {
         Some(i) => -(i as f64 + 0.5) * step,
@@ -123,7 +197,7 @@ fn next_ring(rings: &[&[usize]], done: &[bool], local: &[Option<Point>]) -> Opti
     })
 }
 
-fn place_ring(ring: &[usize], local: &mut [Option<Point>]) {
+fn place_ring(ring: &[usize], frame: &Frame, local: &mut [Option<Point>]) {
     let placed: Vec<usize> = (0..ring.len())
         .filter(|&i| local[ring[i]].is_some())
         .collect();
@@ -137,8 +211,9 @@ fn place_ring(ring: &[usize], local: &mut [Option<Point>]) {
             } else {
                 system_centre
             };
+            let fused = placed.len() == 2;
             for (start, end) in gaps(ring.len(), &placed) {
-                fill_gap(ring, start, end, reference, local);
+                fill_gap(ring, (start, end), reference, fused, frame, local);
             }
         }
     }
@@ -154,16 +229,20 @@ fn gaps(n: usize, placed: &[usize]) -> Vec<(usize, usize)> {
         .collect()
 }
 
-/// Places the atoms strictly between ring positions `start` and `end` on an arc.
+/// Places the atoms strictly between ring positions `start` and `end` as a bridge.
 ///
-/// The arc bulges away from `reference` unless that brings it closer than
-/// [`CLEARANCE`] to atoms already placed and the other side does not, which is
-/// how a bridge across a ring ends up inside it.
+/// The candidates are an arc of unit chords bulging away from `reference` or
+/// toward it, and a shallow bow of shorter chords on either side. The one with
+/// the best [`Quality`](super::quality::Quality), then the smallest departure
+/// from unit bonds, wins, the outer arc on ties. A bridge across a ring ends up
+/// inside it this way, as an arc or a bow. A ring `fused` on one edge keeps its
+/// regular polygon on the far side unless that piles atoms up or crosses bonds.
 fn fill_gap(
     ring: &[usize],
-    start: usize,
-    end: usize,
+    (start, end): (usize, usize),
     reference: Point,
+    fused: bool,
+    frame: &Frame,
     local: &mut [Option<Point>],
 ) {
     let n = ring.len();
@@ -172,26 +251,57 @@ fn fill_gap(
         return;
     };
     let away = away_from(from, to, reference);
-    let clearance = |points: &[Point]| {
-        points
-            .iter()
-            .flat_map(|p| local.iter().flatten().map(move |q| p.distance(*q)))
-            .fold(f64::INFINITY, f64::min)
-    };
-    let outer = arc(from, to, count, away);
-    let points = if clearance(&outer) >= CLEARANCE {
-        outer
-    } else {
-        let inner = arc(from, to, count, -away);
-        if clearance(&inner) > clearance(&outer) {
-            inner
-        } else {
-            outer
+    let atoms: Vec<usize> = (1..=count).map(|j| ring[(start + j) % n]).collect();
+    let candidates = [
+        arc(from, to, count, away),
+        arc(from, to, count, -away),
+        bow(from, to, count, away),
+        bow(from, to, count, -away),
+    ];
+    let score = |points: &[Point]| {
+        let mut trial = local.to_vec();
+        for (&atom, &point) in atoms.iter().zip(points) {
+            trial[atom] = Some(point);
         }
+        let quality = frame.quality(&trial);
+        let deviation: f64 = std::iter::once(from)
+            .chain(points.iter().copied())
+            .zip(points.iter().copied().chain(std::iter::once(to)))
+            .map(|(p, q)| (p.distance(q) - 1.0).abs())
+            .sum();
+        (quality, deviation)
     };
-    for (offset, point) in points.into_iter().enumerate() {
-        local[ring[(start + 1 + offset) % n]] = Some(point);
+    let candidates = match (frame.scored(), fused) {
+        (false, _) => &candidates[..1],
+        (true, true) => &candidates[..2],
+        (true, false) => &candidates[..],
+    };
+    let best = candidates
+        .iter()
+        .min_by(|a, b| {
+            let (x, y) = (score(a), score(b));
+            if fused {
+                x.0.severe().cmp(&y.0.severe())
+            } else {
+                x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal)
+            }
+        })
+        .expect("there are candidates");
+    for (&atom, &point) in atoms.iter().zip(best) {
+        local[atom] = Some(point);
     }
+}
+
+/// `count` points joining `from` to `to` in a shallow bow of height [`BOW`] toward
+/// the unit vector `normal`, spaced evenly along the chord.
+fn bow(from: Point, to: Point, count: usize, normal: Point) -> Vec<Point> {
+    let chords = (count + 1) as f64;
+    (1..=count)
+        .map(|j| {
+            let t = j as f64 / chords;
+            from + (to - from) * t + normal * (BOW * (std::f64::consts::PI * t).sin())
+        })
+        .collect()
 }
 
 /// The unit normal of the chord from `from` to `to` on the side away from `reference`.
@@ -295,6 +405,7 @@ fn place_apart(ring: &[usize], local: &mut [Option<Point>]) {
 mod tests {
     use moiety_core::smiles;
 
+    use super::super::quality::CLEARANCE;
     use super::*;
 
     fn close(a: f64, b: f64) -> bool {
@@ -385,7 +496,7 @@ mod tests {
     }
 
     #[test]
-    fn relaxes_cages_into_separate_atoms() {
+    fn draws_cages_with_separate_atoms() {
         // A cube drawn flat cannot keep every pair of atoms half a bond apart.
         const LEGIBLE: f64 = 0.35;
         for input in [
@@ -412,7 +523,7 @@ mod tests {
             );
             let lengths = bond_lengths(&molecule, &local);
             assert!(
-                lengths.iter().all(|&l| (0.6..1.4).contains(&l)),
+                lengths.iter().all(|&l| (0.55..=1.6).contains(&l)),
                 "{input}: {lengths:?}"
             );
         }

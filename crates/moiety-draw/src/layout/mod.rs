@@ -13,6 +13,10 @@
 //! - atoms with a triple bond or two double bonds (`O=C=O`, allenes) are straight;
 //! - rings are regular polygons with substituents pointing away from the ring
 //!   centre, and rings fused on an edge lie on opposite sides of it;
+//! - a bridge across a ring is an arc or a shallow bow inside it, chosen so that
+//!   no bonds cross and no atom, or substituent, lands on another; a ring system
+//!   that still draws badly is started from another ring, then relaxed, and the
+//!   most legible drawing is kept;
 //! - a final pass flips or turns branches about single bonds where unbonded
 //!   atoms come too close, stretching a crowded hub's bonds only when no flip or
 //!   turn parts its branches without bending it;
@@ -24,6 +28,7 @@ mod geometry;
 mod hub;
 mod overlap;
 mod place;
+mod quality;
 mod relax;
 mod ring_system;
 

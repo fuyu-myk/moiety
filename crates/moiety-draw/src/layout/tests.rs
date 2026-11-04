@@ -422,3 +422,59 @@ fn hubs_that_turns_can_part_keep_unit_bonds() {
         checked(name, &molecule);
     }
 }
+
+/// Pairs of bonds with no atom in common whose segments cross.
+fn crossings(molecule: &Molecule, layout: &Layout) -> Vec<(usize, usize)> {
+    let p = layout.positions();
+    let side = |o: Point, a: Point, b: Point| (a - o).cross(b - o);
+    let bonds = molecule.bonds();
+    let mut found = Vec::new();
+    for (i, x) in bonds.iter().enumerate() {
+        for (j, y) in bonds.iter().enumerate().skip(i + 1) {
+            if [x.a, x.b].iter().any(|a| *a == y.a || *a == y.b) {
+                continue;
+            }
+            let (a, b, c, d) = (p[x.a], p[x.b], p[y.a], p[y.b]);
+            let apart = |s: f64, t: f64| (s > 1e-9 && t < -1e-9) || (s < -1e-9 && t > 1e-9);
+            if apart(side(c, d, a), side(c, d, b)) && apart(side(a, b, c), side(a, b, d)) {
+                found.push((i, j));
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn bridged_ring_systems_draw_without_crossings() {
+    for (name, input) in [
+        ("norbornane", "C1CC2CCC1C2"),
+        ("bicyclo[2.2.2]octane", "C1CC2CCC1CC2"),
+        ("quinuclidine", "C1CN2CCC1CC2"),
+        ("tropine", "CN1C2CCC1CC(O)C2"),
+        ("cocaine", "CN1C2CCC1C(C(C2)OC(=O)c1ccccc1)C(=O)OC"),
+        ("quinine", "COc1ccc2nccc(C(O)C3CC4CCN3CC4C=C)c2c1"),
+    ] {
+        let molecule = smiles::parse(input).unwrap();
+        let layout = layout(&molecule);
+        let p = layout.positions();
+        assert_eq!(crossings(&molecule, &layout), [], "{name}: bonds cross");
+        let adjacency = molecule.adjacency();
+        for i in 0..p.len() {
+            for j in i + 1..p.len() {
+                if graph::bond_between(&adjacency, i, j).is_none() {
+                    assert!(
+                        p[i].distance(p[j]) >= 0.5,
+                        "{name}: atoms {i} and {j} are too close"
+                    );
+                }
+            }
+        }
+        for bond in molecule.bonds() {
+            let length = p[bond.a].distance(p[bond.b]);
+            assert!(
+                (0.55..=1.6).contains(&length),
+                "{name}: bond {bond:?} has length {length}"
+            );
+        }
+    }
+}
