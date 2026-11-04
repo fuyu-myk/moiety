@@ -1,10 +1,10 @@
-# moiety grammar, version 3
+# moiety grammar, version 4
 
 This document is the normative specification of the condensed-formula language that moiety reads. The reference implementation lives in `crates/moiety-core`, and the conformance suite in `conformance/` is the executable form of the rules below. Where this document and the implementation disagree, the implementation has a bug.
 
-Grammar version: **3**. Ranking policy version: **2**.
+Grammar version: **4**. Ranking policy version: **2**.
 
-Version 3 adds ring templates, which number heteroaromatic rings such as pyridine (section 6.12), and lets a locant directly before a benzene ring follow its substituents (section 6.11). Version 2 added locants that number benzene rings. Version 1 read every `C6H4` between other units as an unknown ring.
+Version 4 lets template rings take bracketed locants and locants after their substituents (section 6.12). Version 3 added ring templates, which number heteroaromatic rings such as pyridine (section 6.12), and lets a locant directly before a benzene ring follow its substituents (section 6.11). Version 2 added locants that number benzene rings. Version 1 read every `C6H4` between other units as an unknown ring.
 
 ## 1. Scope
 
@@ -307,7 +307,9 @@ The rules of section 6.11 apply, with these differences:
 - **Substituents after the ring.** The ring may be followed by its substituents, each as `-`, a locant and the substituent, as benzene may: `C5H4N-2-CH=NNHPh` puts the hydrazone chain at position 2. Nothing may come before the ring then, since no position is left for it.
 - **Positions without hydrogen.** A position whose parent atom holds no hydrogen, such as the nitrogen at position 1 of pyridine or the sulfur of thiophene, cannot be listed.
 
-Bracketed locants, locants after their substituents and `o-`, `m-` and `p-` apply to benzene only. CF0108 reports a template ring whose locants break these rules or those of section 6.11 that apply.
+- **Bracketed locants and locants after their substituents.** A template ring may be followed by bracketed substituents that each start with their locant, or by substituents that each end with theirs, as benzene may. Like substituents after the ring, they must fill every substituted position, and nothing may come before the ring: `C5H3N(2-Cl)(6-Cl)`, `C9H6N(8-OH)`, `C5H3NCl2-2,6` and `C5H3NCl-2-CH3-6` are whole molecules.
+
+`o-`, `m-` and `p-` apply to benzene only. CF0108 reports a template ring whose locants break these rules or those of section 6.11 that apply.
 
 ## 7. Interpretation
 

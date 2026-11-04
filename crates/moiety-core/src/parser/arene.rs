@@ -349,13 +349,28 @@ pub(super) fn number(
         _ => None,
     };
     let mut taken = 0u8;
+    let kind = |position: u8| {
+        template
+            .atom(position)
+            .map(|atom| template.parent().atoms()[atom].kind)
+    };
+    let alternative = |position: u8, taken: u8| {
+        let wanted = kind(position)?;
+        (1..=8u8)
+            .filter(|&p| template.substitutable(p) && taken & (1 << (p - 1)) == 0)
+            .filter(|&p| kind(p) == Some(wanted))
+            .min_by_key(|&p| (p.abs_diff(position), p))
+    };
     let take = |taken: &mut u8, span: Span, positions: &[u8]| -> Result<(), SyntaxError> {
         for &position in positions {
             if !template.substitutable(position) {
-                return Err(mismatch(
+                let mut error = mismatch(
                     span,
                     &format!("{name} has no position {position} that can take a substituent"),
-                ));
+                );
+                let digit = |p: u8| char::from(b'0' + p);
+                error.fix = alternative(position, *taken).map(|p| (digit(position), digit(p)));
+                return Err(error);
             }
             let bit = 1 << (position - 1);
             if *taken & bit != 0 {

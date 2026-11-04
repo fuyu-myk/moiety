@@ -71,6 +71,8 @@ pub(crate) struct SyntaxError {
     pub code: Code,
     pub span: Span,
     pub message: String,
+    /// A character in `span` and its replacement, when the error knows the likely fix.
+    pub fix: Option<(char, char)>,
 }
 
 impl Unit {
@@ -164,6 +166,7 @@ impl Parser<'_> {
             code,
             span,
             message: message.to_string(),
+            fix: None,
         }
     }
 
@@ -242,7 +245,7 @@ impl Parser<'_> {
         if let EdgeKind::TrailingLocant(_) = edge.kind {
             return arene::mismatch(
                 edge.span,
-                "this locant has no unnumbered benzene ring before it",
+                "this locant has no ring before it that it can number",
             );
         }
         let what = match edge.kind {
@@ -297,7 +300,7 @@ impl Parser<'_> {
             match unit {
                 Some(unit) => {
                     if let [Item { unit: first, .. }] = items.as_slice() {
-                        if matches!(&first.kind, UnitKind::Arene(arene) if arene.open.is_empty() && !arene.after)
+                        if matches!(&first.kind, UnitKind::Arene(arene) if arene.open.is_empty() && (!arene.after || arene.template != 0))
                         {
                             return Err(arene::mismatch(
                                 first.span,
