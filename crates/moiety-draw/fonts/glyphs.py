@@ -67,7 +67,7 @@ def main(font_path, out_path):
     lines = [
         "//! Outlines of the characters atom labels use, from Inter Regular 3.019.",
         "//!",
-        "//! Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter),",
+        "//! Copyright 2020 The Inter Project Authors (<https://github.com/rsms/inter>),",
         "//! licensed under the SIL Open Font License 1.1: see `fonts/Inter-LICENSE.txt`.",
         "//! Written by `fonts/glyphs.py`.",
         "",
