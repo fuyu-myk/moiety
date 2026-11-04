@@ -37,7 +37,7 @@ pub use interpret::{
     ChargeConvention, GRAMMAR_VERSION, MAX_ATOMS, MAX_INPUT_LEN, Options, RANKING_POLICY_VERSION,
     interpret,
 };
-pub use molecule::{Atom, AtomKind, Bond, BondOrder, Molecule};
+pub use molecule::{Atom, AtomKind, Bond, BondOrder, DoubleBondStereo, Molecule, Tetrahedral};
 pub use reading::{
     Ambiguity, AmbiguityClass, Direction, Interpretation, Provenance, Reading, Underdetermination,
 };

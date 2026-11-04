@@ -6,6 +6,7 @@
 //! always produces canonical SMILES with aromatic atoms in lowercase.
 
 mod read;
+mod stereo;
 mod write;
 
 use std::fmt;

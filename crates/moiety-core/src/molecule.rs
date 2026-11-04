@@ -117,11 +117,45 @@ impl Bond {
     }
 }
 
-/// A molecular graph with implicit hydrogens.
+/// The arrangement of the neighbours of a tetrahedral stereocentre, as SMILES
+/// gives it with `@` and `@@`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Tetrahedral {
+    /// The stereocentre.
+    pub centre: usize,
+    /// Its four neighbours in the order SMILES lists them, `None` standing for an
+    /// implicit hydrogen or a lone pair.
+    pub neighbours: Vec<Option<usize>>,
+    /// Whether the last three neighbours turn anticlockwise seen from the first,
+    /// as `@` says, rather than clockwise, as `@@` says.
+    pub anticlockwise: bool,
+}
+
+/// The configuration of a double bond, as SMILES gives it with `/` and `\`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DoubleBondStereo {
+    /// The double bond.
+    pub bond: usize,
+    /// A neighbour of the bond's first atom and one of its second, outside the bond.
+    pub neighbours: (usize, usize),
+    /// Whether those two neighbours lie on the same side of the bond.
+    pub cis: bool,
+}
+
+/// A molecular graph with implicit hydrogens, and the stereochemistry its
+/// source gave, if any.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Molecule {
     atoms: Vec<Atom>,
     bonds: Vec<Bond>,
+    /// Boxed, since most molecules have none.
+    stereo: Option<Box<Stereo>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+struct Stereo {
+    tetrahedral: Vec<Tetrahedral>,
+    double_bonds: Vec<DoubleBondStereo>,
 }
 
 impl Molecule {
@@ -144,7 +178,11 @@ impl Molecule {
                 "bond {bond:?} does not join two distinct atoms"
             );
         }
-        Self { atoms, bonds }
+        Self {
+            atoms,
+            bonds,
+            ..Self::default()
+        }
     }
 
     /// Appends an atom and returns its index.
@@ -191,6 +229,56 @@ impl Molecule {
     /// Panics if `index` is out of range.
     pub fn set_bond_order(&mut self, index: usize, order: BondOrder) {
         self.bonds[index].order = order;
+    }
+
+    /// The tetrahedral stereocentres the molecule's source gave.
+    #[must_use]
+    pub fn tetrahedral(&self) -> &[Tetrahedral] {
+        self.stereo.as_ref().map_or(&[], |s| &s.tetrahedral)
+    }
+
+    /// The double bond configurations the molecule's source gave.
+    #[must_use]
+    pub fn double_bond_stereo(&self) -> &[DoubleBondStereo] {
+        self.stereo.as_ref().map_or(&[], |s| &s.double_bonds)
+    }
+
+    /// Records the arrangement around a tetrahedral stereocentre.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `stereo` names four neighbours of its centre, at most one of
+    /// them `None`.
+    pub fn add_tetrahedral(&mut self, stereo: Tetrahedral) {
+        let bonded = |n: usize| self.bonds.iter().any(|b| b.other(stereo.centre) == Some(n));
+        assert!(
+            stereo.neighbours.len() == 4
+                && stereo.neighbours.iter().filter(|n| n.is_none()).count() <= 1
+                && stereo.neighbours.iter().flatten().all(|&n| bonded(n)),
+            "{stereo:?} does not name four neighbours of its centre"
+        );
+        self.stereo.get_or_insert_default().tetrahedral.push(stereo);
+    }
+
+    /// Records the configuration of a double bond.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `stereo.bond` is a double bond and its neighbours are bonded
+    /// to its first and second atom.
+    pub fn add_double_bond_stereo(&mut self, stereo: DoubleBondStereo) {
+        let bond = self.bonds[stereo.bond];
+        let bonded = |a: usize, b: usize| self.bonds.iter().any(|x| x.other(a) == Some(b));
+        assert!(
+            bond.order == BondOrder::Double
+                && bonded(bond.a, stereo.neighbours.0)
+                && bonded(bond.b, stereo.neighbours.1),
+            "{stereo:?} does not describe a double bond"
+        );
+        self.stereo
+            .get_or_insert_default()
+            .double_bonds
+            .push(stereo);
     }
 
     /// Whether the molecule has no atoms.
@@ -248,15 +336,31 @@ impl Molecule {
             .sum()
     }
 
-    /// Appends every atom and bond of `other`, returning the index offset applied to its atoms.
+    /// Appends every atom, bond and stereocentre of `other`, returning the index
+    /// offset applied to its atoms.
     pub fn extend(&mut self, other: &Molecule) -> usize {
         let offset = self.atoms.len();
+        let bond_offset = self.bonds.len();
         self.atoms.extend_from_slice(&other.atoms);
         self.bonds.extend(other.bonds.iter().map(|bond| Bond {
             a: bond.a + offset,
             b: bond.b + offset,
             order: bond.order,
         }));
+        for t in other.tetrahedral() {
+            self.add_tetrahedral(Tetrahedral {
+                centre: t.centre + offset,
+                neighbours: t.neighbours.iter().map(|n| n.map(|n| n + offset)).collect(),
+                anticlockwise: t.anticlockwise,
+            });
+        }
+        for d in other.double_bond_stereo() {
+            self.add_double_bond_stereo(DoubleBondStereo {
+                bond: d.bond + bond_offset,
+                neighbours: (d.neighbours.0 + offset, d.neighbours.1 + offset),
+                cis: d.cis,
+            });
+        }
         offset
     }
 
@@ -267,6 +371,7 @@ impl Molecule {
     }
 
     /// Canonical SMILES: the same string for every atom ordering of the same graph.
+    /// It leaves stereochemistry out.
     ///
     /// Symmetry ties are broken by trying every candidate, up to a fixed number of
     /// branches per component, which covers every molecule moiety can read.

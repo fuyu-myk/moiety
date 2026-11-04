@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use super::stereo::Recorder;
 use super::{SmilesError, aromatic_symbol, implicit_hydrogens};
 use crate::aromatic::perceive_aromaticity;
 use crate::element::Element;
@@ -10,7 +11,10 @@ const MAX_SMILES_CHARGE: i8 = 15;
 /// Reads a SMILES string into a molecule.
 ///
 /// Kekulé six-membered rings are perceived as aromatic, so `C1=CC=CC=C1` and
-/// `c1ccccc1` read as the same molecule. A bond between aromatic atoms that lies
+/// `c1ccccc1` read as the same molecule. Tetrahedral centres written with `@`,
+/// `@@`, `@TH1` or `@TH2` and double bonds between bonds written `/` and `\`
+/// are kept as [`Molecule::tetrahedral`] and [`Molecule::double_bond_stereo`];
+/// other chirality classes are read and ignored. A bond between aromatic atoms that lies
 /// on no ring is single, so the rings of biphenyl may be joined without `-`, as
 /// in `c1ccc(cc1)c1ccccc1`.
 ///
@@ -24,6 +28,7 @@ pub fn parse(smiles: &str) -> Result<Molecule, SmilesError> {
         molecule: Molecule::new(),
         implicit: Vec::new(),
         rings: HashMap::new(),
+        stereo: Recorder::default(),
     };
     reader.read()?;
     let mut molecule = reader.finish()?;
@@ -36,7 +41,9 @@ struct Reader<'a> {
     pos: usize,
     molecule: Molecule,
     implicit: Vec<bool>,
-    rings: HashMap<u32, (usize, Option<BondOrder>, usize)>,
+    /// Open ring bonds by label: the atom, its bond order, its position, and its stereo slot.
+    rings: HashMap<u32, (usize, Option<BondOrder>, usize, usize)>,
+    stereo: Recorder,
 }
 
 impl Reader<'_> {
@@ -55,6 +62,7 @@ impl Reader<'_> {
         let mut previous: Option<usize> = None;
         let mut branches: Vec<Option<usize>> = Vec::new();
         let mut bond: Option<BondOrder> = None;
+        let mut direction: Option<bool> = None;
         let mut expect_atom = true;
         while let Some(byte) = self.peek() {
             match byte {
@@ -71,6 +79,11 @@ impl Reader<'_> {
                 }
                 b'-' | b'/' | b'\\' => {
                     bond = Some(BondOrder::Single);
+                    direction = match byte {
+                        b'/' => Some(true),
+                        b'\\' => Some(false),
+                        _ => None,
+                    };
                     self.pos += 1;
                 }
                 b'=' => {
@@ -96,6 +109,7 @@ impl Reader<'_> {
                 b'0'..=b'9' | b'%' => {
                     let at = previous.ok_or_else(|| self.error("ring closure before any atom"))?;
                     let label = self.ring_label()?;
+                    direction = None;
                     self.close_ring(label, at, bond.take())?;
                 }
                 _ => {
@@ -105,6 +119,7 @@ impl Reader<'_> {
                             .take()
                             .unwrap_or_else(|| self.implied_order(from, atom));
                         self.molecule.add_bond(from, atom, order);
+                        self.stereo.bond(from, atom, direction.take());
                     } else if bond.is_some() {
                         return Err(self.error("bond with no atom before it"));
                     }
@@ -119,7 +134,7 @@ impl Reader<'_> {
         if bond.is_some() || (expect_atom && !self.molecule.is_empty()) {
             return Err(self.error("SMILES ends with a dangling bond or '.'"));
         }
-        if let Some((_, (_, _, position))) = self.rings.iter().next() {
+        if let Some((_, (_, _, position, _))) = self.rings.iter().next() {
             return Err(SmilesError {
                 position: *position,
                 message: "unclosed ring".into(),
@@ -163,10 +178,11 @@ impl Reader<'_> {
     ) -> Result<(), SmilesError> {
         match self.rings.remove(&label) {
             None => {
-                self.rings.insert(label, (at, bond, self.pos));
+                let slot = self.stereo.ring_opened(at);
+                self.rings.insert(label, (at, bond, self.pos, slot));
                 Ok(())
             }
-            Some((other, opening, _)) => {
+            Some((other, opening, _, slot)) => {
                 if other == at {
                     return Err(self.error("ring closure bonds an atom to itself"));
                 }
@@ -178,6 +194,7 @@ impl Reader<'_> {
                     (None, None) => self.implied_order(other, at),
                 };
                 self.molecule.add_bond(other, at, order);
+                self.stereo.ring_closed(other, slot, at);
                 Ok(())
             }
         }
@@ -191,6 +208,7 @@ impl Reader<'_> {
         if byte == b'*' {
             self.pos += 1;
             self.implicit.push(false);
+            self.stereo.atom(None, false);
             return Ok(self.molecule.add_atom(Atom::attachment()));
         }
         let two = self.text.get(self.pos..self.pos + 2);
@@ -216,6 +234,7 @@ impl Reader<'_> {
         self.pos += len;
         let element = Element::from_symbol(symbol).expect("organic subset symbols are elements");
         self.implicit.push(true);
+        self.stereo.atom(None, false);
         Ok(self.molecule.add_atom(Atom {
             aromatic,
             ..Atom::new(element)
@@ -237,9 +256,7 @@ impl Reader<'_> {
                 ..Atom::new(element)
             }
         };
-        while matches!(self.peek(), Some(b'@')) {
-            self.pos += 1;
-        }
+        let anticlockwise = self.chirality()?;
         let mut hydrogens = 0;
         if self.peek() == Some(b'H') {
             self.pos += 1;
@@ -257,11 +274,40 @@ impl Reader<'_> {
         }
         self.pos += 1;
         self.implicit.push(false);
+        self.stereo.atom(anticlockwise, hydrogens > 0);
         Ok(self.molecule.add_atom(Atom {
             charge,
             hydrogens,
             ..atom
         }))
+    }
+
+    /// Reads a chirality mark: `@` or `@TH1` gives `Some(true)`, `@@` or `@TH2`
+    /// `Some(false)`, and no mark, or one of another class, `None`.
+    fn chirality(&mut self) -> Result<Option<bool>, SmilesError> {
+        let mut marks = 0;
+        while self.peek() == Some(b'@') {
+            marks += 1;
+            self.pos += 1;
+        }
+        let class = self
+            .text
+            .get(self.pos..self.pos + 2)
+            .filter(|name| marks == 1 && name.iter().all(u8::is_ascii_uppercase))
+            .map(<[u8]>::to_vec);
+        Ok(match (marks, class) {
+            (1, Some(name)) => {
+                self.pos += 2;
+                match (name.as_slice(), self.number("chirality class")?) {
+                    (b"TH", Some(1)) => Some(true),
+                    (b"TH", Some(2)) => Some(false),
+                    _ => None,
+                }
+            }
+            (1, None) => Some(true),
+            (2, _) => Some(false),
+            _ => None,
+        })
     }
 
     fn bracket_symbol(&mut self) -> Result<(Element, bool), SmilesError> {
@@ -348,6 +394,7 @@ impl Reader<'_> {
     }
 
     fn finish(mut self) -> Result<Molecule, SmilesError> {
+        std::mem::take(&mut self.stereo).finish(&mut self.molecule);
         for (index, bridge) in bridges(&self.molecule).into_iter().enumerate() {
             if bridge && self.molecule.bonds()[index].order == BondOrder::Aromatic {
                 self.molecule.set_bond_order(index, BondOrder::Single);
@@ -496,6 +543,58 @@ mod tests {
                 "{implied}"
             );
         }
+    }
+
+    fn centres(smiles: &str) -> Vec<(usize, Vec<Option<usize>>, bool)> {
+        parse(smiles)
+            .unwrap()
+            .tetrahedral()
+            .iter()
+            .map(|t| (t.centre, t.neighbours.clone(), t.anticlockwise))
+            .collect()
+    }
+
+    #[test]
+    fn reads_tetrahedral_centres_in_smiles_order() {
+        assert_eq!(
+            centres("C[C@H](N)C(=O)O"),
+            [(1, vec![Some(0), None, Some(2), Some(3)], true)]
+        );
+        assert_eq!(
+            centres("N[C@@H](C)C(=O)O"),
+            [(1, vec![Some(0), None, Some(2), Some(3)], false)]
+        );
+        assert_eq!(
+            centres("[C@@H](F)(Cl)Br"),
+            [(0, vec![None, Some(1), Some(2), Some(3)], false)]
+        );
+        assert_eq!(
+            centres("F[C@]1(Cl)CCC1"),
+            [(1, vec![Some(0), Some(5), Some(2), Some(3)], true)]
+        );
+        assert_eq!(
+            centres("C[S@](=O)CC"),
+            [(1, vec![Some(0), None, Some(2), Some(3)], true)]
+        );
+        assert_eq!(centres("C[C@H](C)"), []);
+        assert_eq!(centres("CC(N)O"), []);
+    }
+
+    #[test]
+    fn reads_double_bond_configurations() {
+        let cis = |smiles: &str| -> Vec<(usize, usize, bool)> {
+            parse(smiles)
+                .unwrap()
+                .double_bond_stereo()
+                .iter()
+                .map(|d| (d.neighbours.0, d.neighbours.1, d.cis))
+                .collect()
+        };
+        assert_eq!(cis("F/C=C/F"), [(0, 3, false)]);
+        assert_eq!(cis("F/C=C\\F"), [(0, 3, true)]);
+        assert_eq!(cis("C(\\F)=C/F"), [(1, 3, false)]);
+        assert_eq!(cis("C/C=C/C=C\\C"), [(0, 3, false), (2, 5, true)]);
+        assert_eq!(cis("FC=CF"), []);
     }
 
     #[test]
