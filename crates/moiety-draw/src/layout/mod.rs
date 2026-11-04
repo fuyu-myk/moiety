@@ -11,6 +11,8 @@
 //!   pointing up; when they crowd each other its bonds stretch equally, up to
 //!   1.5 bond lengths, rather than bend;
 //! - atoms with a triple bond or two double bonds (`O=C=O`, allenes) are straight;
+//! - double bonds keep the cis or trans configuration their source gave, in
+//!   chains and in macrocycles;
 //! - rings are regular polygons with substituents pointing away from the ring
 //!   centre, and rings fused on an edge lie on opposite sides of it;
 //! - porphyrins, the morphine skeleton and norbornanes take fixed drawings
@@ -29,6 +31,7 @@
 //!
 //! The output is deterministic: the same molecule always gets the same coordinates.
 
+mod double_bonds;
 mod geometry;
 mod hub;
 mod macrocycle;
@@ -103,6 +106,7 @@ pub fn layout(molecule: &Molecule) -> Layout {
         .map(|component| placer.place(component))
         .collect();
     let mut positions = placer.finish();
+    double_bonds::settle(&mut positions, molecule, &adjacency, &rings);
     for (component, hub) in components.iter().zip(hubs) {
         overlap::resolve(&mut positions, component, molecule, &adjacency, &rings, hub);
     }

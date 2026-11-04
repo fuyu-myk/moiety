@@ -1,6 +1,8 @@
 //! How legible a drawing of a ring system is, counting the substituents that
 //! will hang from it, so that candidate drawings can be compared.
 
+use moiety_core::Molecule;
+
 use super::geometry::{EPSILON, Point, largest_gap};
 use crate::graph::{self, Adjacency};
 use crate::rings::RingSystem;
@@ -71,11 +73,23 @@ pub(super) struct Frame {
     inside: Vec<Vec<usize>>,
     outside: Vec<usize>,
     branches: Vec<usize>,
+    /// Stereo double bonds between two atoms of the system: the atoms, a
+    /// neighbour of each and whether those neighbours are cis.
+    double_bonds: Vec<(usize, usize, usize, usize, bool)>,
 }
 
 impl Frame {
-    pub(super) fn new(system: &RingSystem, adjacency: &Adjacency) -> Self {
+    pub(super) fn new(system: &RingSystem, molecule: &Molecule, adjacency: &Adjacency) -> Self {
         let member = |atom: usize| system.atoms.binary_search(&atom).is_ok();
+        let double_bonds = molecule
+            .double_bond_stereo()
+            .iter()
+            .map(|d| {
+                let bond = molecule.bonds()[d.bond];
+                (bond.a, bond.b, d.neighbours.0, d.neighbours.1, d.cis)
+            })
+            .filter(|&(a, b, ..)| member(a) && member(b))
+            .collect();
         let mut inside = vec![Vec::new(); adjacency.len()];
         let mut outside = vec![0; adjacency.len()];
         let mut branches = vec![0; adjacency.len()];
@@ -99,7 +113,33 @@ impl Frame {
             inside,
             outside,
             branches,
+            double_bonds,
         }
+    }
+
+    /// The stereo double bonds along `ring`, each as the ring position of its
+    /// first atom and whether the ring runs trans across it, the ring neighbours
+    /// of its atoms lying on opposite sides.
+    pub(super) fn ring_double_bonds(&self, ring: &[usize]) -> Vec<(usize, bool)> {
+        let n = ring.len();
+        (0..n)
+            .filter_map(|i| {
+                let (a, b) = (ring[i], ring[(i + 1) % n]);
+                let (before, after) = (ring[(i + n - 1) % n], ring[(i + 2) % n]);
+                self.double_bonds.iter().find_map(|&(x, y, nx, ny, cis)| {
+                    let (na, nb) = if (x, y) == (a, b) {
+                        (nx, ny)
+                    } else if (x, y) == (b, a) {
+                        (ny, nx)
+                    } else {
+                        return None;
+                    };
+                    // A neighbour off the ring stands opposite the ring neighbour.
+                    let ring_cis = cis ^ (na != before) ^ (nb != after);
+                    Some((i, !ring_cis))
+                })
+            })
+            .collect()
     }
 
     /// For each atom of `ring`, in ring order, what it costs on an inward corner

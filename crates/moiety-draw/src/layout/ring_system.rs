@@ -12,6 +12,8 @@
 
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
+use moiety_core::Molecule;
+
 use super::geometry::{EPSILON, Point, centroid, circumradius};
 use super::macrocycle;
 use super::quality::Frame;
@@ -27,9 +29,10 @@ const BOW: f64 = 0.3;
 pub(super) fn layout_system(
     info: &RingInfo,
     system: &RingSystem,
+    molecule: &Molecule,
     adjacency: &Adjacency,
 ) -> Vec<Option<Point>> {
-    let frame = Frame::new(system, adjacency);
+    let frame = Frame::new(system, molecule, adjacency);
     if frame.scored() {
         if let Some(local) = templates::matched(&frame, adjacency.len()) {
             return local;
@@ -168,9 +171,9 @@ fn shared(a: &[usize], b: &[usize]) -> usize {
 /// Places `rings[first]` centred on the origin, turned so that its first fused
 /// edge is vertical on the right, or pointing up when nothing is fused to it.
 fn place_first(rings: &[&[usize]], ring: &[usize], frame: &Frame, local: &mut [Option<Point>]) {
-    if let Some(points) =
-        macrocycle::outline(&frame.corner_costs(ring, rings), frame.heaviest(ring))
-    {
+    let costs = frame.corner_costs(ring, rings);
+    let stereo = frame.ring_double_bonds(ring);
+    if let Some(points) = macrocycle::outline(&costs, frame.heaviest(ring), &stereo) {
         for (&atom, point) in ring.iter().zip(points) {
             local[atom] = Some(point);
         }
@@ -431,7 +434,7 @@ mod tests {
         let molecule = smiles::parse(input).unwrap();
         let adjacency = molecule.adjacency();
         let info = RingInfo::new(&molecule, &adjacency);
-        let local = layout_system(&info, &info.systems()[0], &adjacency);
+        let local = layout_system(&info, &info.systems()[0], &molecule, &adjacency);
         (molecule, local)
     }
 

@@ -509,3 +509,25 @@ fn templates_draw_porphine_morphine_and_norbornane_as_chemists_do() {
         .fold(0.0, f64::max);
     assert!(longest > 1.2, "the bridge is drawn in perspective");
 }
+
+#[test]
+fn double_bonds_keep_the_configuration_their_smiles_gives() {
+    for input in [
+        "F/C=C\\F",
+        "F/C=C/F",
+        "CCCC/C=C\\CCCC",
+        "OC(=O)CCCCCCC/C=C\\CCCCCCCC",
+        "C/C=C/C=C\\C=C/C",
+        "Cc1ccccc1/C=C\\c1ccccc1",
+    ] {
+        let molecule = smiles::parse(input).unwrap();
+        let drawn = layout(&molecule);
+        let p = drawn.positions();
+        for stereo in molecule.double_bond_stereo() {
+            let bond = molecule.bonds()[stereo.bond];
+            let side = |n: usize| (p[bond.b] - p[bond.a]).cross(p[n] - p[bond.a]);
+            let (a, b) = (side(stereo.neighbours.0), side(stereo.neighbours.1));
+            assert_eq!(a * b > 0.0, stereo.cis, "{input}: bond {}", stereo.bond);
+        }
+    }
+}

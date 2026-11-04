@@ -117,7 +117,12 @@ impl<'a> Placer<'a> {
 
     fn place_start_system(&mut self, system: usize) {
         let atoms = &self.rings.systems()[system].atoms;
-        let local = layout_system(self.rings, &self.rings.systems()[system], self.adjacency);
+        let local = layout_system(
+            self.rings,
+            &self.rings.systems()[system],
+            self.molecule,
+            self.adjacency,
+        );
         let single_ring =
             self.rings.systems()[system].rings.len() == 1 && atoms.len() < macrocycle::MIN_SIZE;
         let exit = atoms.iter().copied().find(|&atom| {
@@ -136,7 +141,12 @@ impl<'a> Placer<'a> {
     }
 
     fn place_entered_system(&mut self, system: usize, entry: usize, target: Point, from: Point) {
-        let local = layout_system(self.rings, &self.rings.systems()[system], self.adjacency);
+        let local = layout_system(
+            self.rings,
+            &self.rings.systems()[system],
+            self.molecule,
+            self.adjacency,
+        );
         let anchor = local[entry].expect("the entry atom belongs to the system");
         let rotation = (from - target).angle() - self.outward(entry, &local);
         for &atom in &self.rings.systems()[system].atoms {

@@ -35,9 +35,17 @@ const EVENING: usize = 100;
 /// Positions for the atoms of a ring of `costs.len()` atoms, in ring order, on
 /// the outline where they cost least, `costs[i]` being what atom `i` costs on an
 /// inward corner and on an outward one; the atom `top` ends up highest when that
-/// keeps the outline as wide; or `None` for a ring
-/// outside [`MIN_SIZE`] to [`MAX_SIZE`].
-pub(super) fn outline(costs: &[(u32, u32)], top: Option<usize>) -> Option<Vec<Point>> {
+/// keeps the outline as wide; or `None` for a ring outside [`MIN_SIZE`] to
+/// [`MAX_SIZE`].
+///
+/// Each of `stereo`, a ring position and whether the ring runs trans across the
+/// double bond from it to the next position, is honoured where any outline can:
+/// consecutive turns of opposite sign run trans, and of the same sign cis.
+pub(super) fn outline(
+    costs: &[(u32, u32)],
+    top: Option<usize>,
+    stereo: &[(usize, bool)],
+) -> Option<Vec<Point>> {
     let n = costs.len();
     if !(MIN_SIZE..=MAX_SIZE).contains(&n) {
         return None;
@@ -57,17 +65,14 @@ pub(super) fn outline(costs: &[(u32, u32)], top: Option<usize>) -> Option<Vec<Po
                 .collect();
             for start in 0..n {
                 for forward in [true, false] {
-                    let at = |i: usize| costs[atom_at(i, start, forward, n)];
-                    let defect = removed.map_or(0, |v| {
-                        let (before, after) = beside(v, m);
-                        let (a, b) = (at(before), at(after));
-                        (a.0 + a.1 + b.0 + b.1) / 2
-                    });
-                    let cost = defect
-                        + rank * ROUNDNESS
-                        + (0..n)
-                            .map(|i| if kept[i] < 0 { at(i).0 } else { at(i).1 })
-                            .sum::<u32>();
+                    let sitting = Sitting {
+                        kept: &kept,
+                        removed,
+                        m,
+                        start,
+                        forward,
+                    };
+                    let cost = rank * ROUNDNESS + sitting.cost(costs, stereo);
                     if best.as_ref().is_none_or(|b| cost < b.cost) {
                         best = Some(Choice {
                             cost,
@@ -140,6 +145,54 @@ fn upright(points: Vec<Point>, top: Option<usize>) -> Vec<Point> {
         )
         .0;
     points.iter().map(|p| p.rotated(best)).collect()
+}
+
+/// Cost of drawing a stereo double bond the wrong way round, or next to the
+/// corner an odd ring leaves out, where the angles give way.
+const WRONG_STEREO: u32 = 10_000;
+
+/// How a ring of `kept.len()` atoms sits on an outline of `m` vertices whose
+/// turns, without the vertex `removed`, are `kept`.
+struct Sitting<'a> {
+    kept: &'a [i8],
+    removed: Option<usize>,
+    m: usize,
+    start: usize,
+    forward: bool,
+}
+
+impl Sitting<'_> {
+    fn cost(&self, costs: &[(u32, u32)], stereo: &[(usize, bool)]) -> u32 {
+        let n = self.kept.len();
+        let mut turn = vec![0i8; n];
+        for (i, &t) in self.kept.iter().enumerate() {
+            turn[atom_at(i, self.start, self.forward, n)] = t;
+        }
+        let corners: u32 = (0..n)
+            .map(|r| if turn[r] < 0 { costs[r].0 } else { costs[r].1 })
+            .sum();
+        let near_defect = self.removed.map(|v| {
+            let (before, after) = beside(v, self.m);
+            (
+                atom_at(before, self.start, self.forward, n),
+                atom_at(after, self.start, self.forward, n),
+            )
+        });
+        let defect = near_defect.map_or(0, |(a, b)| {
+            (costs[a].0 + costs[a].1 + costs[b].0 + costs[b].1) / 2
+        });
+        let wrong = stereo
+            .iter()
+            .filter(|&&(r, trans)| {
+                let next = (r + 1) % n;
+                let drawn_trans = (turn[r] > 0) != (turn[next] > 0);
+                let beside_defect =
+                    near_defect.is_some_and(|(a, b)| [a, b].contains(&r) || [a, b].contains(&next));
+                drawn_trans != trans || beside_defect
+            })
+            .count() as u32;
+        corners + defect + wrong * WRONG_STEREO
+    }
 }
 
 /// An outline and how the ring sits on it: the vertex left out for an odd ring,
@@ -258,7 +311,7 @@ mod tests {
     #[test]
     fn closes_even_and_odd_rings_with_unit_bonds() {
         for n in [12, 14, 18, 23, 31, 46] {
-            let points = outline(&vec![(0, 0); n], None).unwrap();
+            let points = outline(&vec![(0, 0); n], None, &[]).unwrap();
             assert_eq!(points.len(), n);
             assert!(
                 bonds(&points).iter().all(|&b| (b - 1.0).abs() < 0.05),
@@ -270,8 +323,26 @@ mod tests {
                 }
             }
         }
-        assert!(outline(&[(0, 0); 11], None).is_none());
-        assert!(outline(&[(0, 0); 47], None).is_none());
+        assert!(outline(&[(0, 0); 11], None, &[]).is_none());
+        assert!(outline(&[(0, 0); 47], None, &[]).is_none());
+    }
+
+    #[test]
+    fn draws_ring_double_bonds_cis_or_trans_as_asked() {
+        let side = |points: &[Point], i: usize| {
+            let n = points.len();
+            let (a, b) = (points[i], points[(i + 1) % n]);
+            let before = (b - a).cross(points[(i + n - 1) % n] - a);
+            let after = (b - a).cross(points[(i + 2) % n] - a);
+            before * after > 0.0
+        };
+        for n in [14, 15] {
+            let stereo = [(2, true), (6, false), (10, true)];
+            let points = outline(&vec![(0, 0); n], None, &stereo).unwrap();
+            for (i, trans) in stereo {
+                assert_eq!(side(&points, i), !trans, "{n}: bond {i}");
+            }
+        }
     }
 
     #[test]
@@ -280,7 +351,7 @@ mod tests {
         for i in [0, 3, 5, 9, 12] {
             costs[i] = (10, 0);
         }
-        let points = outline(&costs, None).unwrap();
+        let points = outline(&costs, None, &[]).unwrap();
         let centre = points.iter().fold(Point::default(), |s, &p| s + p) * (1.0 / 14.0);
         for i in [0, 3, 5, 9, 12] {
             let (before, after) = (points[(i + 13) % 14], points[(i + 1) % 14]);
