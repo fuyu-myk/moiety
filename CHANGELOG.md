@@ -13,13 +13,16 @@ Grammar version 3, dictionary 1.4.0.
   - attachment locants before the ring: `2-C5H4NCH2OH`, `-5-Br-2-C5H3N`, `HOCH2-2,6-C5H3N-CH2OH`;
   - attachment locants after it: `(C5H4N-2)3P`, `Ph2P(C5H4N-2)`, `-C10H7-1`;
   - substituents after the ring: `C5H4N-2-CH=NNHPh`.
-- `[[ring]]` tables in dictionary files, with `RingTemplate`, `Dictionary::rings`, `Dictionary::insert_ring`, `MAX_POSITIONS`, and the errors `DictionaryError::BadRing` and `DictionaryError::DuplicateRing`.
-- Dictionary 1.4.0: templates for pyridine, thiophene, furan and naphthalene.
+- `[[ring]]` tables in dictionary files, with `RingTemplate`, `Dictionary::rings`, `Dictionary::insert_ring`, `Dictionary::remove_ring`, `MAX_POSITIONS`, and the errors `DictionaryError::BadRing` and `DictionaryError::DuplicateRing`. A file that extends a dictionary replaces the ring template with the same name or the same formula, so it can bring pyrazole in place of the bundled imidazole.
+- Dictionary 1.4.0: templates for pyridine, pyrimidine, pyrrole, imidazole, thiazole, thiophene, furan, naphthalene, quinoline and indole, numbered as IUPAC numbers them: `8-HOC9H6N`, `3-C8H6NCH2COOH`, `2-H2NC3H2NS`, `1-MeC3H3N2`.
 - When two ring formulas match at one place, the longer is read, so a user template such as thienothiophene's `C6H2S2` wins over benzene's `C6H2`.
-- The writer writes template rings with locants: `4-C5H4NN(CH3)CH3`, `2,6-Br2C5H3N`, `CH3-2,6-C5H3NCH3`, `-(5-Br-2-C5H3N)`, `3-C4H3SCl`. Only a ring with no hydrogen left stays unwritable.
+- The writer writes template rings with locants: `4-C5H4NN(CH3)CH3`, `2,6-Br2C5H3N`, `CH3-2,6-C5H3NCH3`, `-(5-Br-2-C5H3N)`, `3-C4H3SCl`. A ring with no hydrogen left fails with the new `WriteError::FullRing`, and a template's parent ring on its own, such as pyridine, with `WriteError::BareRing`.
 
 ### Changed
 
+- The public error enums `DictionaryError`, `WriteError`, `LoadError`, `SuiteError` and `DifferentialError` are `#[non_exhaustive]`, so a `match` on them needs a wildcard arm.
+- Error messages no longer repeat their source error, which the CLI prints after them, and a ring template's SMILES error names the ring.
+- A group that opens with a template ring followed by its substituents, as in `P(C5H4N-2-CH3)3`, reports CF0108 at the ring, since nothing is left for the host, instead of CF0206.
 - The generated round-trip corpus grows one molecule in eight each from pyridine and from thiophene.
 - A locant directly before a benzene ring may follow its substituents, listing the positions they leave: `2-Cl-1,4-C6H3(OH)2` is 2-chlorohydroquinone.
 - Locants may list positions up to 8, which naphthalene needs.

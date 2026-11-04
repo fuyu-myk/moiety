@@ -9,12 +9,13 @@ const DEFAULT: &str = include_str!("../data/dictionary.toml");
 
 /// A dictionary file that could not be loaded.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum LoadError {
     /// The file is not valid TOML or does not have the dictionary layout.
-    #[error("dictionary file is malformed: {0}")]
+    #[error("dictionary file is malformed")]
     Toml(#[from] toml::de::Error),
     /// An entry or ring template could not be defined or added.
-    #[error("dictionary entry rejected: {0}")]
+    #[error("dictionary entry or ring template rejected")]
     Entry(#[from] DictionaryError),
 }
 
@@ -77,7 +78,9 @@ pub fn load(text: &str) -> Result<Dictionary, LoadError> {
 }
 
 /// Adds the entries and ring templates of a TOML dictionary to `base`, replacing
-/// those with the same name.
+/// those with the same name. A ring template also replaces one of `base` with
+/// the same formula, so a dictionary can bring pyrazole in place of the bundled
+/// imidazole.
 ///
 /// The result keeps the name and version of `base`.
 ///
@@ -100,8 +103,21 @@ fn add_file(dictionary: &mut Dictionary, file: File) -> Result<(), LoadError> {
             entry.reversed,
         )?)?;
     }
+    let mut added: Vec<String> = Vec::new();
     for ring in file.ring {
-        dictionary.insert_ring(RingTemplate::new(&ring.name, &ring.smiles)?)?;
+        let ring = RingTemplate::new(&ring.name, &ring.smiles)?;
+        let replaced = dictionary
+            .rings()
+            .iter()
+            .find(|other| {
+                other.formula() == ring.formula() && !added.contains(&other.name().to_string())
+            })
+            .map(|other| other.name().to_string());
+        if let Some(name) = replaced {
+            dictionary.remove_ring(&name);
+        }
+        added.push(ring.name().to_string());
+        dictionary.insert_ring(ring)?;
     }
     Ok(())
 }
@@ -144,6 +160,45 @@ mod tests {
         assert_eq!(dictionary.name(), "moiety-default");
         assert_eq!(dictionary.get("methyl").unwrap().spellings(), ["Me", "Mt"]);
         assert!(dictionary.get("pyridin-2-yl").is_some());
+    }
+
+    #[test]
+    fn rejects_bad_ring_templates() {
+        let header = "[dictionary]\nname = \"x\"\nversion = \"1\"\n";
+        let ring = |name: &str, smiles: &str| {
+            format!("[[ring]]\nname = \"{name}\"\nsmiles = \"{smiles}\"\n")
+        };
+        let unparsed = format!("{header}{}", ring("broken", "c1cc("));
+        assert!(matches!(
+            load(&unparsed),
+            Err(LoadError::Entry(DictionaryError::BadRing { ring, .. })) if ring == "broken"
+        ));
+        let isomers = format!(
+            "{header}{}{}",
+            ring("pyrimidine", "n1cnccc1"),
+            ring("pyrazine", "n1ccncc1")
+        );
+        let Err(LoadError::Entry(error)) = load(&isomers) else {
+            panic!("isomeric templates share a formula");
+        };
+        assert_eq!(
+            error.to_string(),
+            "rings pyrimidine and pyrazine share the formula C4H4N2"
+        );
+    }
+
+    #[test]
+    fn ring_templates_replace_bundled_ones_with_their_formula() {
+        let pyrazole = "[dictionary]\nname = \"x\"\nversion = \"1\"\n[[ring]]\nname = \"pyrazole\"\nsmiles = \"[nH]1nccc1\"\n";
+        let dictionary = extend(default_dictionary(), pyrazole).unwrap();
+        let names: Vec<&str> = dictionary.rings().iter().map(|r| r.name()).collect();
+        assert!(names.contains(&"pyrazole"));
+        assert!(!names.contains(&"imidazole"));
+        let benzene = pyrazole.replace("[nH]1nccc1", "c1ccccc1");
+        assert!(matches!(
+            extend(default_dictionary(), &benzene),
+            Err(LoadError::Entry(DictionaryError::DuplicateRing { .. }))
+        ));
     }
 
     #[test]

@@ -192,6 +192,10 @@ impl Writer<'_> {
         match 6 - self.edges[node].len() {
             1 => Ok("C6H".to_string()),
             hydrogens @ 2..=4 => Ok(format!("C6H{hydrogens}")),
+            0 => Err(WriteError::FullRing {
+                atom: self.ring(node).atoms[0],
+                ring: "benzene".to_string(),
+            }),
             _ => Err(WriteError::UnknownRing(self.ring(node).atoms[0])),
         }
     }

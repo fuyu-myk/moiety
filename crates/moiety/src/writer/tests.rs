@@ -126,6 +126,14 @@ fn writes_template_rings_with_locants() {
         "CCCCCC(CCCCCC)c1c(O)ccc2ccccc12",
         "OC(=O)c1ccc(o1)-c1ccc(cc1)[N+](=O)[O-]",
         "Oc1ccc(Cl)cc1Cc1ccc(C)cn1",
+        "OC(=O)Cc1c[nH]c2ccccc12",
+        "Oc1cccc2cccnc12",
+        "Nc1nccs1",
+        "Cn1ccnc1",
+        "Cn1cccc1",
+        "Nc1ncccn1",
+        "CC(=O)Nc1ccc2[nH]ccc2c1",
+        "c1ccc(-c2nccs2)cc1",
     ] {
         round_trips(smiles);
     }
@@ -160,6 +168,26 @@ fn never_writes_a_formula_that_reads_back_differently() {
     assert!(matches!(
         condense(&biphenylene, default_dictionary()),
         Err(WriteError::UnknownRing(_))
+    ));
+}
+
+#[test]
+fn names_rings_that_no_formula_can_number() {
+    let error = |smiles: &str| {
+        let molecule = moiety_core::smiles::parse(smiles).unwrap();
+        condense(&molecule, default_dictionary()).unwrap_err()
+    };
+    assert!(matches!(
+        error("Clc1c(Cl)c(Cl)c(Cl)c(Cl)c1Cl"),
+        WriteError::FullRing { ring, .. } if ring == "benzene"
+    ));
+    assert!(matches!(
+        error("Clc1nc(Cl)c(Cl)c(Cl)c1Cl"),
+        WriteError::FullRing { ring, .. } if ring == "pyridine"
+    ));
+    assert!(matches!(
+        error("n1ccccc1"),
+        WriteError::BareRing { ring, .. } if ring == "pyridine"
     ));
 }
 

@@ -495,6 +495,34 @@ fn instantiate(
     sites
 }
 
+/// The failure for a group with no free valence. A group with a host before it
+/// that opens with a template ring whose substituents follow it gets the locant
+/// failure, since those substituents take every position (grammar, section 6.12).
+fn saturated_group(unit: &Unit, hosted: bool) -> Failure {
+    let first = match &unit.kind {
+        UnitKind::Group { seq, .. } => seq.items.first().map(|item| &item.unit.kind),
+        _ => None,
+    };
+    if let Some(UnitKind::Arene(arene)) = first {
+        if hosted && arene.after && arene.template != 0 {
+            return Failure::new(
+                Code::LocantMismatch,
+                "nothing may come before this ring",
+                arene.ring,
+                "its substituents leave no position for the group's host".into(),
+                arene.ring.start,
+            );
+        }
+    }
+    Failure::new(
+        Code::GroupWithoutValence,
+        "this group has no free valence to bond with",
+        unit.span,
+        "every atom inside is already saturated".into(),
+        unit.span.start,
+    )
+}
+
 /// Applies rule R1 to an assembled group interior.
 fn repeat_group(
     state: &State,
@@ -505,13 +533,7 @@ fn repeat_group(
 ) -> Vec<(State, Piece)> {
     let free: u32 = group.atoms.iter().map(|a| u32::from(a.free())).sum();
     let Some(head) = group.atoms.iter().position(|a| a.free() > 0) else {
-        ctx.fail(Failure::new(
-            Code::GroupWithoutValence,
-            "this group has no free valence to bond with",
-            unit.span,
-            "every atom inside is already saturated".into(),
-            unit.span.start,
-        ));
+        ctx.fail(saturated_group(unit, state.started));
         return Vec::new();
     };
     let tail = group.host().unwrap_or(head);

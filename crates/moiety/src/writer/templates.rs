@@ -252,7 +252,10 @@ impl Writer<'_> {
     fn template_formula(&self, node: usize) -> Result<String, WriteError> {
         let template = self.template_ring(node).template;
         match template.hydrogens() - self.edges[node].len() {
-            0 => Err(self.template_error(node)),
+            0 => Err(WriteError::FullRing {
+                atom: self.template_atom(node),
+                ring: template.name().to_string(),
+            }),
             left => Ok(template.written(left)),
         }
     }
@@ -288,7 +291,12 @@ impl Writer<'_> {
     }
 
     fn template_error(&self, node: usize) -> WriteError {
-        WriteError::UnknownRing(self.template_ring(node).numberings[0][0])
+        WriteError::UnknownRing(self.template_atom(node))
+    }
+
+    /// An atom of the ring, for error reports.
+    fn template_atom(&self, node: usize) -> usize {
+        self.template_ring(node).numberings[0][0]
     }
 
     /// The positions of `neighbours` under the numbering that gives the lowest
@@ -343,7 +351,10 @@ impl Writer<'_> {
         let others = neighbours.len();
         neighbours.extend(next);
         if neighbours.is_empty() {
-            return Err(self.template_error(node));
+            return Err(WriteError::BareRing {
+                atom: self.template_atom(node),
+                ring: self.template_ring(node).template.name().to_string(),
+            });
         }
         let positions = self
             .template_numbering(node, &neighbours, |_| true)

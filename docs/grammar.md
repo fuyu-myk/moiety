@@ -411,7 +411,7 @@ spellings = ["COOH", "CO2H"]
 reversed = ["HOOC", "HO2C"]
 ```
 
-`smiles` defines the fragment. Each `*` is an attachment point. `spellings` are read with the attachment on the left, `reversed` with the attachment on the right. Callers can load their own file or extend the default one.
+`smiles` defines the fragment. Each `*` is an attachment point. `spellings` are read with the attachment on the left, `reversed` with the attachment on the right. Callers can load their own file or extend the default one. An extending file replaces the entries and ring templates with the same name, and a ring template also replaces the one with the same formula.
 
 A spelling starts with a letter, or with a one- or two-digit locant followed by `-` and a spelling, as `2-C5H4N` names 2-pyridyl and `1-C10H7` 1-naphthyl. A spelling that starts with a digit is matched only where a locant may start (section 3.1), so the count of `(CH2)2-C5H4N` is never read as part of one.
 
@@ -423,7 +423,7 @@ name = "pyridine"
 smiles = "n1ccccc1"
 ```
 
-`smiles` is the parent ring system, aromatic and with no attachment points. Its ring atoms are numbered from 1 in SMILES order, skipping atoms shared by two rings, so `c1cccc2ccccc12` numbers naphthalene 1 to 8. A numbered atom may hold at most one hydrogen, and an atom shared by two rings none. The template's formula is the parent's in Hill order, written with the hydrogens left, so pyridine is written `C5H4N` to `C5HN`. Two templates may not share a formula, and benzene is built in. The bundled dictionary defines pyridine, thiophene, furan and naphthalene.
+`smiles` is the parent ring system, aromatic and with no attachment points. Its ring atoms are numbered from 1 in SMILES order, skipping atoms shared by two rings, so `c1cccc2ccccc12` numbers naphthalene 1 to 8. A numbered atom may hold at most one hydrogen, and an atom shared by two rings none. The template's formula is the parent's in Hill order, written with the hydrogens left, so pyridine is written `C5H4N` to `C5HN`. Two templates may not share a formula, and benzene is built in. Isomers such as pyrimidine, pyrazine and pyridazine therefore cannot all be templates in one dictionary, but a file that extends the default one can bring pyrazole in place of imidazole, or isoquinoline in place of quinoline. The bundled dictionary defines pyridine, pyrimidine, pyrrole, imidazole, thiazole, thiophene, furan, naphthalene, quinoline and indole, each numbered as IUPAC numbers it.
 
 ## 10. Conformance
 

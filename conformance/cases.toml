@@ -1020,6 +1020,48 @@ expect = "unique"
 smiles = ["c1ccc(P(c2ccccc2)c2ccccn2)cc1"]
 
 [[case]]
+id = "template/quinoline"
+corpus = "curated"
+input = "8-HOC9H6N"
+expect = "unique"
+smiles = ["Oc1cccc2cccnc12"]
+
+[[case]]
+id = "template/indole"
+corpus = "curated"
+input = "3-C8H6NCH2COOH"
+expect = "unique"
+smiles = ["OC(=O)Cc1c[nH]c2ccccc12"]
+
+[[case]]
+id = "template/pyrrole-nitrogen"
+corpus = "curated"
+input = "1-MeC4H4N"
+expect = "unique"
+smiles = ["Cn1cccc1"]
+
+[[case]]
+id = "template/imidazole"
+corpus = "curated"
+input = "1-MeC3H3N2"
+expect = "unique"
+smiles = ["Cn1ccnc1"]
+
+[[case]]
+id = "template/thiazole"
+corpus = "curated"
+input = "2-H2NC3H2NS"
+expect = "unique"
+smiles = ["Nc1nccs1"]
+
+[[case]]
+id = "template/pyrimidine"
+corpus = "curated"
+input = "2-H2NC4H3N2"
+expect = "unique"
+smiles = ["Nc1ncccn1"]
+
+[[case]]
 id = "template/group-starting-with-a-bond"
 corpus = "curated"
 input = "CH3CH(-2,5-C5H3NOH)CH3"

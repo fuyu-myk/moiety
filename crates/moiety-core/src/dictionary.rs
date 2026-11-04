@@ -235,6 +235,12 @@ impl Dictionary {
         self.rings.len() + 1
     }
 
+    /// Removes the ring template called `name` and returns it, if there is one.
+    pub fn remove_ring(&mut self, name: &str) -> Option<RingTemplate> {
+        let index = self.rings.iter().position(|ring| ring.name() == name)?;
+        Some(self.rings.remove(index))
+    }
+
     /// Adds a ring template, replacing any template with the same name, and returns
     /// the one it replaced.
     ///
@@ -253,7 +259,7 @@ impl Dictionary {
         for other in others {
             if other.formula() == ring.formula() {
                 return Err(DictionaryError::DuplicateRing {
-                    formula: ring.written(1),
+                    formula: ring.written(ring.hydrogens()),
                     first: other.name().to_string(),
                     second: ring.name().to_string(),
                 });
@@ -331,6 +337,7 @@ impl Dictionary {
 
 /// A dictionary entry that could not be defined or added.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DictionaryError {
     /// The entry's SMILES does not parse.
     Smiles {
@@ -365,7 +372,7 @@ pub enum DictionaryError {
         /// Entry that tried to claim it.
         second: String,
     },
-    /// A ring template is not a ring system that locants can number.
+    /// A ring template's SMILES does not parse, or is not a ring system that locants can number.
     BadRing {
         /// Template name.
         ring: String,
@@ -374,7 +381,7 @@ pub enum DictionaryError {
     },
     /// Two ring templates have the same formula.
     DuplicateRing {
-        /// The formula, written with one hydrogen.
+        /// The formula of the parent ring system, as `C4H4N2`.
         formula: String,
         /// Template that already has it.
         first: String,
@@ -408,7 +415,7 @@ impl fmt::Display for DictionaryError {
                 formula,
                 first,
                 second,
-            } => write!(f, "rings {first} and {second} are both written {formula}"),
+            } => write!(f, "rings {first} and {second} share the formula {formula}"),
         }
     }
 }

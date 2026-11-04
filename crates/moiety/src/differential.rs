@@ -174,9 +174,10 @@ impl Comparison {
 
 /// A file that could not be read.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum DifferentialError {
     /// Malformed TOML.
-    #[error("malformed differential file: {0}")]
+    #[error("malformed differential file")]
     Toml(#[from] toml::de::Error),
 }
 

@@ -408,6 +408,7 @@ fn template_locants_must_fit() {
         "p-ClC5H4N",
         "CH3C5H4N-2-OH",
         "9-ClC10H7",
+        "P(C5H4N-2-CH3)3",
     ] {
         assert_eq!(error_code(input), Code::LocantMismatch, "{input}");
     }

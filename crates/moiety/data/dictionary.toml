@@ -452,3 +452,27 @@ smiles = "o1cccc1"
 [[ring]]
 name = "naphthalene"
 smiles = "c1cccc2ccccc12"
+
+[[ring]]
+name = "pyrrole"
+smiles = "[nH]1cccc1"
+
+[[ring]]
+name = "imidazole"
+smiles = "[nH]1cncc1"
+
+[[ring]]
+name = "thiazole"
+smiles = "s1cncc1"
+
+[[ring]]
+name = "pyrimidine"
+smiles = "n1cnccc1"
+
+[[ring]]
+name = "indole"
+smiles = "[nH]1ccc2ccccc12"
+
+[[ring]]
+name = "quinoline"
+smiles = "n1cccc2ccccc12"

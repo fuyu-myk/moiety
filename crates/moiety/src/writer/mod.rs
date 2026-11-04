@@ -15,10 +15,29 @@ use templates::{TemplateRing, template_rings};
 
 /// A molecule the writer cannot express as a condensed formula.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum WriteError {
     /// A ring that no dictionary entry matches.
     #[error("atom {0} is in a ring that no dictionary entry matches")]
     UnknownRing(usize),
+    /// A ring that benzene or a ring template numbers, with no hydrogen left for
+    /// its formula to write.
+    #[error("atom {atom} is in a {ring} ring with no hydrogen left, which no formula can number")]
+    FullRing {
+        /// An atom of the ring.
+        atom: usize,
+        /// The ring's name, as `pyridine`.
+        ring: String,
+    },
+    /// A ring template's parent ring with nothing bonded to it, which locants
+    /// cannot number and only its molecular formula names.
+    #[error("atom {atom} is in an unsubstituted {ring} ring, which locants cannot number")]
+    BareRing {
+        /// An atom of the ring.
+        atom: usize,
+        /// The ring's name, as `pyridine`.
+        ring: String,
+    },
     /// An attachment point that is not at either end of a chain.
     #[error("attachment point {0} is not at the end of a chain")]
     InnerAttachment(usize),
@@ -41,7 +60,8 @@ pub enum WriteError {
 /// # Errors
 ///
 /// Fails for rings that neither a dictionary spelling nor locants can write, such
-/// as fused rings and rings with no hydrogen left, for attachment points that are
+/// as fused rings that no template numbers, rings with no hydrogen left and a
+/// template's parent ring on its own, for attachment points that are
 /// not at the end of a chain, and for molecules that no formula the writer can
 /// produce reads back as.
 pub fn condense(molecule: &Molecule, dictionary: &Dictionary) -> Result<String, WriteError> {

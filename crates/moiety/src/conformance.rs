@@ -104,9 +104,10 @@ pub struct Suite {
 
 /// A suite file that could not be read.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum SuiteError {
     /// The file is not valid TOML or does not have the suite layout.
-    #[error("conformance suite is malformed: {0}")]
+    #[error("conformance suite is malformed")]
     Toml(#[from] toml::de::Error),
     /// An expected SMILES string does not parse.
     #[error("case {id}: expected SMILES {smiles:?} does not parse: {error}")]

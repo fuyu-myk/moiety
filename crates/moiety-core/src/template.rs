@@ -40,10 +40,7 @@ impl RingTemplate {
             ring: name.to_string(),
             reason: reason.to_string(),
         };
-        let parent = smiles::parse(smiles).map_err(|error| DictionaryError::Smiles {
-            entry: name.to_string(),
-            error,
-        })?;
+        let parent = smiles::parse(smiles).map_err(|error| bad(&error.to_string()))?;
         if parent
             .atoms()
             .iter()
