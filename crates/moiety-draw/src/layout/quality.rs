@@ -31,13 +31,15 @@ const FUSED: u32 = 400;
 /// Bond lengths a drawing may use at all, in bond lengths.
 const LENGTHS: std::ops::RangeInclusive<f64> = 0.55..=1.6;
 
-/// How legible a drawing is, worst first: atoms piled on one another and bonds
-/// outside [`LENGTHS`], then bonds that cross, then atoms closer than
+/// How legible a drawing is, worst first: stereo double bonds drawn the wrong
+/// way round, which would show another molecule, then atoms piled on one
+/// another and bonds outside [`LENGTHS`], then bonds that cross, then atoms closer than
 /// [`CLEARANCE`] to an atom or a stub, then how far bonds miss unit length
 /// beyond [`STRETCH`], and last stubs closer than [`CLEARANCE`] to each other,
 /// which the placement of substituents can still ease. Smaller is better.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub(super) struct Quality {
+    wrong: usize,
     broken: usize,
     crossings: usize,
     crowded: usize,
@@ -48,19 +50,23 @@ pub(super) struct Quality {
 impl Quality {
     /// Whether this drawing is better than `other` leaving stubs aside.
     pub(super) fn beats(&self, other: &Self) -> bool {
-        let key = |q: &Self| (q.broken, q.crossings, q.crowded, q.stretch);
+        let key = |q: &Self| (q.wrong, q.broken, q.crossings, q.crowded, q.stretch);
         key(self) < key(other)
     }
 
     /// The piled atoms, bad bond lengths and crossing bonds, the faults no
     /// placement should accept.
-    pub(super) fn severe(&self) -> (usize, usize) {
-        (self.broken, self.crossings)
+    pub(super) fn severe(&self) -> (usize, usize, usize) {
+        (self.wrong, self.broken, self.crossings)
     }
 
     /// Whether nothing is piled, crossed, crowded or stretched.
     pub(super) fn is_clean(&self) -> bool {
-        self.broken == 0 && self.crossings == 0 && self.crowded == 0 && self.stretch < EPSILON
+        self.wrong == 0
+            && self.broken == 0
+            && self.crossings == 0
+            && self.crowded == 0
+            && self.stretch < EPSILON
     }
 }
 
@@ -199,6 +205,22 @@ impl Frame {
         &self.inside[atom]
     }
 
+    /// Whether two atoms of the system are crowded in `local`, or a bond misses
+    /// unit length by more than [`STRETCH`]: a check cheap enough for systems too
+    /// large to score.
+    pub(super) fn is_rough(&self, local: &[Option<Point>]) -> bool {
+        let placed: Vec<Point> = self.atoms.iter().filter_map(|&a| local[a]).collect();
+        let crowded = placed
+            .iter()
+            .enumerate()
+            .any(|(i, p)| placed[i + 1..].iter().any(|q| p.distance(*q) < CLEARANCE));
+        crowded
+            || self.bonds.iter().any(|&(a, b)| match (local[a], local[b]) {
+                (Some(p), Some(q)) => (p.distance(q) - 1.0).abs() > STRETCH,
+                _ => false,
+            })
+    }
+
     /// Whether the system is small enough for its drawings to be compared.
     pub(super) fn scored(&self) -> bool {
         self.bonds.len() <= MAX_SCORED_BONDS
@@ -229,7 +251,6 @@ impl Frame {
                 stub -= 1;
             }
         }
-        // Pairs closer than `limit`; a pair of stubs counts only when `stubs` is set.
         // Pairs closer than `limit` that `counted` accepts, given whether each is an atom.
         let near = |limit: f64, counted: fn(bool, bool) -> bool| {
             points
@@ -254,7 +275,21 @@ impl Frame {
                     .count()
             })
             .sum();
+        let wrong = self
+            .double_bonds
+            .iter()
+            .filter(|&&(a, b, na, nb, cis)| {
+                let (Some(pa), Some(pb), Some(qa), Some(qb)) =
+                    (local[a], local[b], local[na], local[nb])
+                else {
+                    return false;
+                };
+                let (first, second) = ((pb - pa).cross(qa - pa), (pb - pa).cross(qb - pa));
+                first.abs() > EPSILON && second.abs() > EPSILON && (first * second > 0.0) != cis
+            })
+            .count();
         Quality {
+            wrong,
             broken: near(PILED, |a, b| a || b) + bad_lengths,
             crossings,
             crowded: near(CLEARANCE, |a, b| a || b),

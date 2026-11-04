@@ -33,6 +33,7 @@ pub fn parse(smiles: &str) -> Result<Molecule, SmilesError> {
     reader.read()?;
     let mut molecule = reader.finish()?;
     perceive_aromaticity(&mut molecule);
+    molecule.drop_stale_stereo();
     Ok(molecule)
 }
 
@@ -41,9 +42,19 @@ struct Reader<'a> {
     pos: usize,
     molecule: Molecule,
     implicit: Vec<bool>,
-    /// Open ring bonds by label: the atom, its bond order, its position, and its stereo slot.
-    rings: HashMap<u32, (usize, Option<BondOrder>, usize, usize)>,
+    rings: HashMap<u32, OpenRing>,
     stereo: Recorder,
+}
+
+/// A ring bond opened and not yet closed.
+struct OpenRing {
+    atom: usize,
+    order: Option<BondOrder>,
+    position: usize,
+    /// Where its partner goes in the order of the atom's neighbours.
+    slot: usize,
+    /// `/` (`true`) or `\` (`false`) written at the opening digit.
+    direction: Option<bool>,
 }
 
 impl Reader<'_> {
@@ -109,8 +120,7 @@ impl Reader<'_> {
                 b'0'..=b'9' | b'%' => {
                     let at = previous.ok_or_else(|| self.error("ring closure before any atom"))?;
                     let label = self.ring_label()?;
-                    direction = None;
-                    self.close_ring(label, at, bond.take())?;
+                    self.close_ring(label, at, bond.take(), direction.take())?;
                 }
                 _ => {
                     let atom = self.atom()?;
@@ -134,9 +144,9 @@ impl Reader<'_> {
         if bond.is_some() || (expect_atom && !self.molecule.is_empty()) {
             return Err(self.error("SMILES ends with a dangling bond or '.'"));
         }
-        if let Some((_, (_, _, position, _))) = self.rings.iter().next() {
+        if let Some(open) = self.rings.values().next() {
             return Err(SmilesError {
-                position: *position,
+                position: open.position,
                 message: "unclosed ring".into(),
             });
         }
@@ -170,19 +180,35 @@ impl Reader<'_> {
         Ok(u32::from(digit))
     }
 
+    /// Opens or closes ring bond `label` at atom `at`, with the bond order and
+    /// direction written at its digit.
     fn close_ring(
         &mut self,
         label: u32,
         at: usize,
         bond: Option<BondOrder>,
+        direction: Option<bool>,
     ) -> Result<(), SmilesError> {
         match self.rings.remove(&label) {
             None => {
                 let slot = self.stereo.ring_opened(at);
-                self.rings.insert(label, (at, bond, self.pos, slot));
+                let open = OpenRing {
+                    atom: at,
+                    order: bond,
+                    position: self.pos,
+                    slot,
+                    direction,
+                };
+                self.rings.insert(label, open);
                 Ok(())
             }
-            Some((other, opening, _, slot)) => {
+            Some(OpenRing {
+                atom: other,
+                order: opening,
+                slot,
+                direction: opened,
+                ..
+            }) => {
                 if other == at {
                     return Err(self.error("ring closure bonds an atom to itself"));
                 }
@@ -194,7 +220,8 @@ impl Reader<'_> {
                     (None, None) => self.implied_order(other, at),
                 };
                 self.molecule.add_bond(other, at, order);
-                self.stereo.ring_closed(other, slot, at);
+                self.stereo
+                    .ring_closed(other, slot, at, (opened, direction));
                 Ok(())
             }
         }
@@ -550,7 +577,7 @@ mod tests {
             .unwrap()
             .tetrahedral()
             .iter()
-            .map(|t| (t.centre, t.neighbours.clone(), t.anticlockwise))
+            .map(|t| (t.centre, t.neighbours.to_vec(), t.anticlockwise))
             .collect()
     }
 
@@ -577,6 +604,7 @@ mod tests {
             [(1, vec![Some(0), None, Some(2), Some(3)], true)]
         );
         assert_eq!(centres("C[C@H](C)"), []);
+        assert_eq!(centres("C[C@](=O)O"), [], "carbon has no lone pair");
         assert_eq!(centres("CC(N)O"), []);
     }
 
@@ -595,6 +623,17 @@ mod tests {
         assert_eq!(cis("C(\\F)=C/F"), [(1, 3, false)]);
         assert_eq!(cis("C/C=C/C=C\\C"), [(0, 3, false), (2, 5, true)]);
         assert_eq!(cis("FC=CF"), []);
+        let ring = |smiles: &str| parse(smiles).unwrap().double_bond_stereo()[0].cis;
+        assert!(ring("C(/F)=C/1.Br1") == ring("C(/F)=C/Br"));
+        assert!(ring("C(/F)=C\\1.Br1") == ring("C(/F)=C\\Br"));
+        assert!(ring("Br/1.C(/F)=C1") == ring("C(/F)=C\\Br"));
+        let kekule = parse("F/C1=C(/F)C=CC=C1").unwrap();
+        assert!(
+            kekule.double_bond_stereo().is_empty(),
+            "the ring is aromatic"
+        );
+        let mut copy = Molecule::new();
+        copy.extend(&kekule);
     }
 
     #[test]

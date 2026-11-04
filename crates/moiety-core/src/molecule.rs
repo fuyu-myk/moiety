@@ -125,7 +125,7 @@ pub struct Tetrahedral {
     pub centre: usize,
     /// Its four neighbours in the order SMILES lists them, `None` standing for an
     /// implicit hydrogen or a lone pair.
-    pub neighbours: Vec<Option<usize>>,
+    pub neighbours: [Option<usize>; 4],
     /// Whether the last three neighbours turn anticlockwise seen from the first,
     /// as `@` says, rather than clockwise, as `@@` says.
     pub anticlockwise: bool,
@@ -237,6 +237,17 @@ impl Molecule {
         self.stereo.as_ref().map_or(&[], |s| &s.tetrahedral)
     }
 
+    /// Forgets double bond configurations whose bond is no longer a double bond,
+    /// as after a Kekulé ring is perceived as aromatic.
+    pub(crate) fn drop_stale_stereo(&mut self) {
+        let bonds = &self.bonds;
+        if let Some(stereo) = self.stereo.as_mut() {
+            stereo
+                .double_bonds
+                .retain(|d| bonds[d.bond].order == BondOrder::Double);
+        }
+    }
+
     /// The double bond configurations the molecule's source gave.
     #[must_use]
     pub fn double_bond_stereo(&self) -> &[DoubleBondStereo] {
@@ -247,15 +258,13 @@ impl Molecule {
     ///
     /// # Panics
     ///
-    /// Panics unless `stereo` names four neighbours of its centre, at most one of
-    /// them `None`.
+    /// Panics unless `stereo` names neighbours of its centre, at most one of them `None`.
     pub fn add_tetrahedral(&mut self, stereo: Tetrahedral) {
         let bonded = |n: usize| self.bonds.iter().any(|b| b.other(stereo.centre) == Some(n));
         assert!(
-            stereo.neighbours.len() == 4
-                && stereo.neighbours.iter().filter(|n| n.is_none()).count() <= 1
+            stereo.neighbours.iter().filter(|n| n.is_none()).count() <= 1
                 && stereo.neighbours.iter().flatten().all(|&n| bonded(n)),
-            "{stereo:?} does not name four neighbours of its centre"
+            "{stereo:?} does not name neighbours of its centre"
         );
         self.stereo.get_or_insert_default().tetrahedral.push(stereo);
     }
@@ -350,7 +359,7 @@ impl Molecule {
         for t in other.tetrahedral() {
             self.add_tetrahedral(Tetrahedral {
                 centre: t.centre + offset,
-                neighbours: t.neighbours.iter().map(|n| n.map(|n| n + offset)).collect(),
+                neighbours: t.neighbours.map(|n| n.map(|n| n + offset)),
                 anticlockwise: t.anticlockwise,
             });
         }

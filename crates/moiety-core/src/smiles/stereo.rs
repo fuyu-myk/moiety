@@ -54,10 +54,24 @@ impl Recorder {
         self.neighbours[atom].len() - 1
     }
 
-    /// The ring bond opened at `opener`, in `slot`, closed at `closer`.
-    pub(super) fn ring_closed(&mut self, opener: usize, slot: usize, closer: usize) {
+    /// The ring bond opened at `opener`, in `slot`, closed at `closer`, with the
+    /// directions written at its opening and closing digits. A direction at a
+    /// digit reads as if the partner were written just after that atom.
+    pub(super) fn ring_closed(
+        &mut self,
+        opener: usize,
+        slot: usize,
+        closer: usize,
+        (opened, closed): (Option<bool>, Option<bool>),
+    ) {
         self.neighbours[opener][slot] = Slot::Atom(closer);
         self.neighbours[closer].push(Slot::Atom(opener));
+        if let Some(slash) = opened {
+            self.directions.push((opener, closer, slash));
+        }
+        if let Some(slash) = closed {
+            self.directions.push((closer, opener, slash));
+        }
     }
 
     /// Records in `molecule` every stereocentre with four neighbours and every
@@ -78,11 +92,14 @@ impl Recorder {
                     _ => None,
                 })
                 .collect();
-            if neighbours.len() == 3 && !slots.contains(&Slot::Hydrogen) {
+            let lone_pair = molecule.atoms()[centre]
+                .element()
+                .is_some_and(|e| ["N", "P", "As", "S", "Se", "Te"].contains(&e.symbol()));
+            if neighbours.len() == 3 && !slots.contains(&Slot::Hydrogen) && lone_pair {
                 // A lone pair stands where an implicit hydrogen would.
                 neighbours.insert(usize::from(self.preceded[centre]), None);
             }
-            if neighbours.len() == 4 {
+            if let Ok(neighbours) = <[Option<usize>; 4]>::try_from(neighbours) {
                 molecule.add_tetrahedral(Tetrahedral {
                     centre,
                     neighbours,

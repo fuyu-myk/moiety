@@ -46,6 +46,9 @@ pub(super) fn layout_system(
     let first = first_ring(&rings);
     let mut local = template(&rings, rings[first], &frame, adjacency.len());
     if !frame.scored() {
+        if frame.is_rough(&local) {
+            relax(&system.atoms, adjacency, &mut local);
+        }
         return local;
     }
     let mut drawn = frame.quality(&local);
@@ -294,16 +297,17 @@ fn fill_gap(
         (true, true) => &candidates[..2],
         (true, false) => &candidates[..],
     };
-    let best = candidates
-        .iter()
-        .min_by(|a, b| {
-            let (x, y) = (score(a), score(b));
+    let scores: Vec<_> = candidates.iter().map(|c| score(c)).collect();
+    let best = (0..candidates.len())
+        .min_by(|&a, &b| {
+            let (x, y) = (&scores[a], &scores[b]);
             if fused {
                 x.0.severe().cmp(&y.0.severe())
             } else {
-                x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal)
+                x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
             }
         })
+        .map(|index| &candidates[index])
         .expect("there are candidates");
     for (&atom, &point) in atoms.iter().zip(best) {
         local[atom] = Some(point);

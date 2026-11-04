@@ -519,6 +519,8 @@ fn double_bonds_keep_the_configuration_their_smiles_gives() {
         "OC(=O)CCCCCCC/C=C\\CCCCCCCC",
         "C/C=C/C=C\\C=C/C",
         "Cc1ccccc1/C=C\\c1ccccc1",
+        "C(C(C)C)C(=C/C(C)C)/C(=C\\C(C)C)CC(C)C",
+        "CC1(C)/C=C/C(C)(C)C(C)(C)C(C)(C)C(C)(C)C(C)(C)C(C)(C)C(C)(C)C(C)(C)C1(C)C",
     ] {
         let molecule = smiles::parse(input).unwrap();
         let drawn = layout(&molecule);

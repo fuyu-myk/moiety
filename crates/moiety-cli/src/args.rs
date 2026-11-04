@@ -120,6 +120,9 @@ pub fn parse(argv: &[String]) -> Result<Args> {
     if args.reading == 0 {
         bail!("--reading counts from 1");
     }
+    if args.smiles && !matches!(args.command, Command::Draw | Command::Html) {
+        bail!("--smiles applies to draw");
+    }
     Ok(args)
 }
 
@@ -159,5 +162,6 @@ mod tests {
         assert!(args(&["parse", "CO", "--reading", "0"]).is_err());
         assert!(args(&["parse", "CO", "--nope"]).is_err());
         assert!(args(&["parse", "CO", "--dictionary"]).is_err());
+        assert!(args(&["parse", "CO", "--smiles"]).is_err());
     }
 }

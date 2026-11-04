@@ -175,7 +175,12 @@ impl Scene<'_> {
         } else {
             (y_side, x, y)
         };
-        let turns = if !turns || graph::is_linear(self.molecule, self.adjacency, pivot) {
+        let stereo = self.molecule.double_bond_stereo().iter().any(|d| {
+            let bond = self.molecule.bonds()[d.bond];
+            bond.a == pivot || bond.b == pivot
+        });
+        // Turning about an atom of a stereo double bond could line a neighbour up with it.
+        let turns = if !turns || stereo || graph::is_linear(self.molecule, self.adjacency, pivot) {
             &[][..]
         } else {
             &TURNS[..]

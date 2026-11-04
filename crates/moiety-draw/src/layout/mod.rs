@@ -45,7 +45,7 @@ mod templates;
 use moiety_core::Molecule;
 
 pub use geometry::Point;
-pub(crate) use geometry::{Bounds, EPSILON, centroid};
+pub(crate) use geometry::{Bounds, EPSILON, centroid, largest_gap};
 
 use crate::rings::RingInfo;
 use place::Placer;
@@ -53,11 +53,11 @@ use place::Placer;
 /// Horizontal space between the atoms of neighbouring components, in bond lengths.
 pub const COMPONENT_GAP: f64 = 2.0;
 
-/// Coordinates for every atom of a molecule, one unit per bond length, `y` downward.
+/// Coordinates for every atom of a molecule in bond lengths, `y` downward.
 ///
 /// Most bonds are one unit long. A crowded hub's bonds may stretch, a bridge
-/// across a ring may be shorter, and a template keeps its source's lengths, all
-/// between 0.55 and 1.6.
+/// across a ring may be shorter and a template keeps its source's lengths, all
+/// between 0.55 and 1.6; a cage that only relaxation can draw may stray further.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Layout {
     positions: Vec<Point>,

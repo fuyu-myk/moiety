@@ -5,12 +5,15 @@
 //! not itself a stereocentre. The bond is a wedge when lifting its far end
 //! toward the viewer, with the hidden hydrogen or lone pair completing the
 //! tetrahedron, turns the neighbours the way `@` or `@@` says, and a hash when
-//! pushing it away does.
+//! pushing it away does. The turn is the signed volume of all four neighbours,
+//! which does not depend on which of them comes first. A centre with four
+//! drawn neighbours is never wedged on a bond whose three others lie within a
+//! half-plane, where the drawing would be ambiguous.
 
 use moiety_core::{BondOrder, Element, Molecule, Tetrahedral};
 
 use crate::graph::{Adjacency, bond_between};
-use crate::layout::Point;
+use crate::layout::{EPSILON, Point, largest_gap};
 use crate::rings::RingInfo;
 
 /// How a stereo bond is drawn.
@@ -82,6 +85,15 @@ fn orientation(
     adjacency: &Adjacency,
 ) -> Option<Wedge> {
     let centre = positions[stereo.centre];
+    if adjacency[stereo.centre].len() == 4 {
+        let others = adjacency[stereo.centre]
+            .iter()
+            .filter(|&&(n, _)| n != lifted)
+            .map(|&(n, _)| (positions[n] - centre).angle());
+        if largest_gap(others).1 >= std::f64::consts::PI - EPSILON {
+            return None;
+        }
+    }
     let turn = |height: f64| -> Option<f64> {
         let vector = |n: usize| {
             let d = positions[n] - centre;
@@ -103,9 +115,22 @@ fn orientation(
                 None => hidden,
             })
             .collect::<Option<_>>()?;
-        Some(determinant(ordered[0], ordered[1], ordered[2]))
+        let from = |v: [f64; 3]| {
+            [
+                v[0] - ordered[0][0],
+                v[1] - ordered[0][1],
+                v[2] - ordered[0][2],
+            ]
+        };
+        Some(determinant(
+            from(ordered[1]),
+            from(ordered[2]),
+            from(ordered[3]),
+        ))
     };
-    let wanted = |volume: f64| volume.abs() > 1e-6 && (volume > 0.0) == stereo.anticlockwise;
+    // Seen from the first neighbour, the others turn anticlockwise when the
+    // volume they span from it is negative.
+    let wanted = |volume: f64| volume.abs() > 1e-6 && (volume < 0.0) == stereo.anticlockwise;
     if turn(1.0).is_some_and(wanted) {
         Some(Wedge::Solid)
     } else if turn(-1.0).is_some_and(wanted) {
@@ -120,8 +145,8 @@ fn normalized(v: [f64; 3]) -> Option<[f64; 3]> {
     (length > 1e-9).then(|| [v[0] / length, v[1] / length, v[2] / length])
 }
 
-/// The signed volume of `a`, `b` and `c`, positive when they turn anticlockwise
-/// seen from the side `a` points to, in coordinates with `y` up and `z` toward the viewer.
+/// The signed volume of `a`, `b` and `c`, in coordinates with `y` up and `z`
+/// toward the viewer.
 fn determinant(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
     a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
         + a[2] * (b[0] * c[1] - b[1] * c[0])
@@ -165,6 +190,24 @@ mod tests {
             );
             assert_eq!(wedged.iter().flatten().count(), 1);
         }
+    }
+
+    /// The same centre with its neighbours listed in another order of the same
+    /// handedness gets the same wedge.
+    #[test]
+    fn does_not_depend_on_the_order_of_neighbours() {
+        let parsed = smiles::parse("O[C@]12CCCCC(O1)CCCCCCCC2").unwrap();
+        let stereo = parsed.tetrahedral()[0].clone();
+        assert_eq!(stereo.neighbours, [Some(0), Some(7), Some(15), Some(2)]);
+        let mut reordered = Molecule::from_parts(parsed.atoms().to_vec(), parsed.bonds().to_vec());
+        reordered.add_tetrahedral(Tetrahedral {
+            neighbours: [Some(0), Some(15), Some(2), Some(7)],
+            ..stereo
+        });
+        let drawn = crate::layout::layout(&parsed);
+        let first = wedges(&parsed, drawn.positions());
+        assert!(first.iter().flatten().count() == 1);
+        assert_eq!(first, wedges(&reordered, drawn.positions()));
     }
 
     #[test]
