@@ -31,6 +31,7 @@ Grammar version 3, dictionary 1.4.0.
 ### Fixed
 
 - The SMILES reader gave aromatic sulfur, and aromatic nitrogen with three bonds, an implicit hydrogen they do not have. Canonical SMILES text is unchanged.
+- The SMILES reader made a bond between two aromatic atoms aromatic even when it lies on no ring, so the writer could not write biaryls whose SMILES joins the rings without `-`, such as `c1ccc(cc1)c1ccccn1`. Such a bond is now single.
 - A ring that opens a group starting with a bond now bonds to the group's host by its lowest listed position, as the grammar says. `CH3CH(-1,2,4-C6H3(Cl)Br)CH3` put the chlorine at 1 and the host at 4 before.
 
 ## 0.4.0 - 2026-11-02

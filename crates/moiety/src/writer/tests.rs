@@ -134,6 +134,8 @@ fn writes_template_rings_with_locants() {
         "Nc1ncccn1",
         "CC(=O)Nc1ccc2[nH]ccc2c1",
         "c1ccc(-c2nccs2)cc1",
+        "c1ccc(cc1)c1ccccn1",
+        "c1ccc(cc1)c1ccc(cc1)c1ccccc1",
     ] {
         round_trips(smiles);
     }
