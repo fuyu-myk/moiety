@@ -6,10 +6,13 @@
 //! 60 degrees. A side of the large hexagon is a left turn followed by `p` pairs
 //! of right and left turns, so an outline of `m` atoms has `(m + 6) / 2` outward
 //! corners. It closes when the zig-zag counts of opposite sides balance. A ring
-//! with an odd number of atoms is drawn on the outline one larger, without one
-//! corner, and its bonds are evened out.
+//! with an odd number of atoms is drawn on the outline one larger without one
+//! corner, whose two neighbours are joined by one longer bond, placed where
+//! neither carries a substituent if it can be. The outline is turned so that
+//! its bonds run at 30 and 90 degrees, as chemists draw zig-zags, and so that
+//! it is wider than tall.
 
-use std::f64::consts::FRAC_PI_3;
+use std::f64::consts::{FRAC_PI_3, FRAC_PI_6};
 
 use super::geometry::Point;
 
@@ -20,22 +23,28 @@ pub(super) const MIN_SIZE: usize = 12;
 const MAX_SIZE: usize = 46;
 
 /// Outlines tried for one ring, the roundest first.
-const SHAPES: usize = 8;
+const SHAPES: usize = 24;
 
-/// Passes that even out the bonds of an odd ring.
-const EVENING: usize = 200;
+/// Cost of each step away from the roundest outline, which breaks near ties
+/// toward round outlines without outweighing a substituent.
+const ROUNDNESS: u32 = 4;
 
-/// Positions for the atoms of a ring of `inward.len()` atoms, in ring order, on
-/// the outline whose inward corners cost least, `inward[i]` being the cost of
-/// atom `i` on one; or `None` for a ring outside [`MIN_SIZE`] to [`MAX_SIZE`].
-pub(super) fn outline(inward: &[u32]) -> Option<Vec<Point>> {
-    let n = inward.len();
+/// Passes that even out the three bonds around the corner an odd ring leaves out.
+const EVENING: usize = 100;
+
+/// Positions for the atoms of a ring of `costs.len()` atoms, in ring order, on
+/// the outline where they cost least, `costs[i]` being what atom `i` costs on an
+/// inward corner and on an outward one; the atom `top` ends up highest when that
+/// keeps the outline as wide; or `None` for a ring
+/// outside [`MIN_SIZE`] to [`MAX_SIZE`].
+pub(super) fn outline(costs: &[(u32, u32)], top: Option<usize>) -> Option<Vec<Point>> {
+    let n = costs.len();
     if !(MIN_SIZE..=MAX_SIZE).contains(&n) {
         return None;
     }
     let m = n + n % 2;
     let mut best: Option<Choice> = None;
-    for turns in shapes(m) {
+    for (rank, turns) in (0u32..).zip(shapes(m)) {
         let removals: Vec<Option<usize>> = if n == m {
             vec![None]
         } else {
@@ -48,10 +57,17 @@ pub(super) fn outline(inward: &[u32]) -> Option<Vec<Point>> {
                 .collect();
             for start in 0..n {
                 for forward in [true, false] {
-                    let cost = (0..n)
-                        .filter(|&i| kept[i] < 0)
-                        .map(|i| inward[atom_at(i, start, forward, n)])
-                        .sum::<u32>();
+                    let at = |i: usize| costs[atom_at(i, start, forward, n)];
+                    let defect = removed.map_or(0, |v| {
+                        let (before, after) = beside(v, m);
+                        let (a, b) = (at(before), at(after));
+                        (a.0 + a.1 + b.0 + b.1) / 2
+                    });
+                    let cost = defect
+                        + rank * ROUNDNESS
+                        + (0..n)
+                            .map(|i| if kept[i] < 0 { at(i).0 } else { at(i).1 })
+                            .sum::<u32>();
                     if best.as_ref().is_none_or(|b| cost < b.cost) {
                         best = Some(Choice {
                             cost,
@@ -81,10 +97,49 @@ pub(super) fn outline(inward: &[u32]) -> Option<Vec<Point>> {
     for (i, &point) in vertices.iter().enumerate() {
         points[atom_at(i, start, forward, n)] = point;
     }
-    if removed.is_some() {
-        even_out(&mut points);
+    if let Some(v) = removed {
+        let (before, after) = beside(v, m);
+        let (a, b) = (
+            atom_at(before, start, forward, n),
+            atom_at(after, start, forward, n),
+        );
+        let first = if (a + 1) % n == b { a } else { b };
+        even_out(&mut points, first);
     }
-    Some(points)
+    Some(upright(points, top))
+}
+
+/// The outline positions, among the vertices kept, on either side of the
+/// removed vertex `v` of an outline of `m` vertices.
+fn beside(v: usize, m: usize) -> (usize, usize) {
+    let kept = |x: usize| if x < v { x } else { x - 1 };
+    (kept((v + m - 1) % m), kept((v + 1) % m))
+}
+
+/// The outline turned to bonds at 30 and 90 degrees, and then by the multiple of
+/// 60 degrees that makes it widest for its height, with the atom `top` highest
+/// among the turns that are as wide.
+fn upright(points: Vec<Point>, top: Option<usize>) -> Vec<Point> {
+    let score = |angle: f64| {
+        let turned: Vec<Point> = points.iter().map(|p| p.rotated(angle)).collect();
+        let span = |f: fn(&Point) -> f64| {
+            let values = turned.iter().map(f);
+            values.clone().fold(f64::NEG_INFINITY, f64::max) - values.fold(f64::INFINITY, f64::min)
+        };
+        let ratio = span(|p| p.x) / span(|p| p.y).max(1e-9);
+        // Rounded so that turns as wide as each other tie; y grows downward.
+        let height = top.map_or(0.0, |i| -turned[i].y);
+        ((ratio * 1e6).round(), height)
+    };
+    let best = (0..6)
+        .map(|k| FRAC_PI_6 + FRAC_PI_3 * f64::from(k))
+        .map(|angle| (angle, score(angle)))
+        .fold(
+            (FRAC_PI_6, (f64::NEG_INFINITY, f64::NEG_INFINITY)),
+            |best, next| if next.1 > best.1 { next } else { best },
+        )
+        .0;
+    points.iter().map(|p| p.rotated(best)).collect()
 }
 
 /// An outline and how the ring sits on it: the vertex left out for an odd ring,
@@ -161,18 +216,30 @@ fn walk(turns: &[i8]) -> Vec<Point> {
     points
 }
 
-/// Nudges the atoms of a closed ring until every bond is close to unit length.
-fn even_out(points: &mut [Point]) {
+/// Moves the ring atoms at `first` and the one after it, joined by the long bond
+/// across a removed corner, until it and the bonds on either side of them are
+/// as close to unit length as they can be. Every other atom stays on the lattice.
+fn even_out(points: &mut [Point], first: usize) {
     let n = points.len();
+    let (p, q) = (first, (first + 1) % n);
+    let bonds = [((p + n - 1) % n, p), (p, q), (q, (q + 1) % n)];
+    let movable = |atom: usize| atom == p || atom == q;
     for _ in 0..EVENING {
-        for i in 0..n {
-            let j = (i + 1) % n;
+        for &(i, j) in &bonds {
             let delta = points[j] - points[i];
             let length = delta.length();
-            if length > 1e-9 {
-                let correction = delta * ((length - 1.0) / (2.0 * length));
-                points[i] = points[i] + correction;
-                points[j] = points[j] - correction;
+            if length < 1e-9 {
+                continue;
+            }
+            let error = delta * ((length - 1.0) / length);
+            match (movable(i), movable(j)) {
+                (true, true) => {
+                    points[i] = points[i] + error * 0.5;
+                    points[j] = points[j] - error * 0.5;
+                }
+                (true, false) => points[i] = points[i] + error,
+                (false, true) => points[j] = points[j] - error,
+                (false, false) => {}
             }
         }
     }
@@ -191,7 +258,7 @@ mod tests {
     #[test]
     fn closes_even_and_odd_rings_with_unit_bonds() {
         for n in [12, 14, 18, 23, 31, 46] {
-            let points = outline(&vec![0; n]).unwrap();
+            let points = outline(&vec![(0, 0); n], None).unwrap();
             assert_eq!(points.len(), n);
             assert!(
                 bonds(&points).iter().all(|&b| (b - 1.0).abs() < 0.05),
@@ -203,17 +270,17 @@ mod tests {
                 }
             }
         }
-        assert!(outline(&[0; 11]).is_none());
-        assert!(outline(&[0; 47]).is_none());
+        assert!(outline(&[(0, 0); 11], None).is_none());
+        assert!(outline(&[(0, 0); 47], None).is_none());
     }
 
     #[test]
     fn puts_marked_atoms_on_outward_corners() {
-        let mut inward = vec![0; 14];
+        let mut costs = vec![(0, 0); 14];
         for i in [0, 3, 5, 9, 12] {
-            inward[i] = 10;
+            costs[i] = (10, 0);
         }
-        let points = outline(&inward).unwrap();
+        let points = outline(&costs, None).unwrap();
         let centre = points.iter().fold(Point::default(), |s, &p| s + p) * (1.0 / 14.0);
         for i in [0, 3, 5, 9, 12] {
             let (before, after) = (points[(i + 13) % 14], points[(i + 1) % 14]);

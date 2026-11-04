@@ -168,11 +168,9 @@ fn shared(a: &[usize], b: &[usize]) -> usize {
 /// Places `rings[first]` centred on the origin, turned so that its first fused
 /// edge is vertical on the right, or pointing up when nothing is fused to it.
 fn place_first(rings: &[&[usize]], ring: &[usize], frame: &Frame, local: &mut [Option<Point>]) {
-    let inward: Vec<u32> = ring
-        .iter()
-        .map(|&a| frame.inward_cost(a, ring, rings))
-        .collect();
-    if let Some(points) = macrocycle::outline(&inward) {
+    if let Some(points) =
+        macrocycle::outline(&frame.corner_costs(ring, rings), frame.heaviest(ring))
+    {
         for (&atom, point) in ring.iter().zip(points) {
             local[atom] = Some(point);
         }

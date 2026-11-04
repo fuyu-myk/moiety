@@ -21,8 +21,10 @@ const MAX_SCORED_BONDS: usize = 600;
 /// Largest branch size counted toward the cost of pointing an atom into its ring.
 const BRANCH_CAP: usize = 20;
 
-/// Cost of pointing into its ring an atom that bonds to another ring of the system.
-const FUSED_INWARD: u32 = 400;
+/// Cost of putting an atom where another ring of the system cannot lie outside
+/// its ring: the end of a shared path on an inward corner, or the middle of one
+/// on an outward corner.
+const FUSED: u32 = 400;
 
 /// Bond lengths a drawing may use at all, in bond lengths.
 const LENGTHS: std::ops::RangeInclusive<f64> = 0.55..=1.6;
@@ -100,18 +102,46 @@ impl Frame {
         }
     }
 
-    /// What it costs to point `atom` of `ring` into the ring: most when it lies on
-    /// or bonds to another of the system's `rings`, otherwise ten for each atom
-    /// of its substituents up to [`BRANCH_CAP`] per substituent, nothing without any.
-    pub(super) fn inward_cost(&self, atom: usize, ring: &[usize], rings: &[&[usize]]) -> u32 {
-        let shared = rings
+    /// For each atom of `ring`, in ring order, what it costs on an inward corner
+    /// and on an outward corner of the ring's outline, so that the system's other
+    /// `rings` and the substituents lie outside it.
+    ///
+    /// Where another ring shares a path with this one, the path's ends belong on
+    /// outward corners and its middle atoms on inward ones, the way a ring fused
+    /// on an edge or hung from three atoms sits outside a macrocycle. An atom
+    /// bonded to another ring's atom outside the path also belongs outward, and
+    /// a substituted atom costs twenty on an inward corner for each atom of its
+    /// substituents, up to [`BRANCH_CAP`] per substituent, so that a large
+    /// substituent weighs as much as another ring.
+    pub(super) fn corner_costs(&self, ring: &[usize], rings: &[&[usize]]) -> Vec<(u32, u32)> {
+        let n = ring.len();
+        let mut costs: Vec<(u32, u32)> = ring
             .iter()
-            .any(|other| *other != ring && other.contains(&atom));
-        if shared || self.inside[atom].iter().any(|n| !ring.contains(n)) {
-            FUSED_INWARD
-        } else {
-            10 * u32::try_from(self.branches[atom]).unwrap_or(u32::MAX / 100)
+            .map(|&atom| {
+                let bridging = self.inside[atom].iter().any(|n| !ring.contains(n));
+                let branch = 20 * u32::try_from(self.branches[atom]).unwrap_or(u32::MAX / 100);
+                (if bridging { FUSED } else { branch }, 0)
+            })
+            .collect();
+        for other in rings.iter().filter(|other| **other != ring) {
+            let shared: Vec<bool> = ring.iter().map(|a| other.contains(a)).collect();
+            for i in (0..n).filter(|&i| shared[i]) {
+                let (before, after) = (shared[(i + n - 1) % n], shared[(i + 1) % n]);
+                if before && after {
+                    costs[i].1 = costs[i].1.saturating_add(FUSED);
+                } else if before || after {
+                    costs[i].0 = costs[i].0.saturating_add(FUSED);
+                }
+            }
         }
+        costs
+    }
+
+    /// The atom of `ring` with the largest substituents, if any has substituents.
+    pub(super) fn heaviest(&self, ring: &[usize]) -> Option<usize> {
+        (0..ring.len())
+            .filter(|&i| self.branches[ring[i]] > 0)
+            .max_by_key(|&i| (self.branches[ring[i]], std::cmp::Reverse(i)))
     }
 
     /// The atoms of the ring system.

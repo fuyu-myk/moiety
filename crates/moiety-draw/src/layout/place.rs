@@ -14,6 +14,7 @@ use moiety_core::Molecule;
 
 use super::geometry::{EPSILON, Point, largest_gap};
 use super::hub;
+use super::macrocycle;
 use super::ring_system::layout_system;
 use crate::graph::{self, Adjacency};
 use crate::rings::RingInfo;
@@ -117,7 +118,8 @@ impl<'a> Placer<'a> {
     fn place_start_system(&mut self, system: usize) {
         let atoms = &self.rings.systems()[system].atoms;
         let local = layout_system(self.rings, &self.rings.systems()[system], self.adjacency);
-        let single_ring = self.rings.systems()[system].rings.len() == 1;
+        let single_ring =
+            self.rings.systems()[system].rings.len() == 1 && atoms.len() < macrocycle::MIN_SIZE;
         let exit = atoms.iter().copied().find(|&atom| {
             self.adjacency[atom]
                 .iter()
