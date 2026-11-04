@@ -17,7 +17,7 @@
 [suite]
 name = "moiety-conformance"
 version = "0.5.0"
-grammar = 3
+grammar = 4
 ranking = 2
 
 # Chains and branches
@@ -1060,6 +1060,34 @@ corpus = "curated"
 input = "2-H2NC4H3N2"
 expect = "unique"
 smiles = ["Nc1ncccn1"]
+
+[[case]]
+id = "template/bracketed-locants"
+corpus = "curated"
+input = "C5H3N(2-Cl)(6-Cl)"
+expect = "unique"
+smiles = ["Clc1cccc(Cl)n1"]
+
+[[case]]
+id = "template/bracketed-hydroxy-quinoline"
+corpus = "curated"
+input = "C9H6N(8-OH)"
+expect = "unique"
+smiles = ["Oc1cccc2cccnc12"]
+
+[[case]]
+id = "template/locants-after-substituents"
+corpus = "curated"
+input = "C5H3NCl2-2,6"
+expect = "unique"
+smiles = ["Clc1cccc(Cl)n1"]
+
+[[case]]
+id = "template/one-locant-after-each"
+corpus = "curated"
+input = "C5H3NCl-2-CH3-6"
+expect = "unique"
+smiles = ["Cc1cccc(Cl)n1"]
 
 [[case]]
 id = "template/group-starting-with-a-bond"

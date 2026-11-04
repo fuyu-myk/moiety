@@ -12,6 +12,29 @@ const MAX_CANDIDATES: usize = 120;
 const DIGITS: [char; 3] = ['2', '3', '4'];
 const LETTERS: [char; 5] = ['C', 'H', 'O', 'N', 'S'];
 
+/// `fix`, an error's own repair of its input, when it reads within the suggestion
+/// budget and a full read agrees.
+pub(crate) fn check_fix(fix: String, dictionary: &Dictionary, options: &Options) -> Option<String> {
+    let quiet = Options {
+        suggestions: false,
+        ..options.clone()
+    };
+    let budget = Budget::new(SUGGESTION_SEARCH_LIMIT);
+    if !readable(&fix, dictionary, &quiet, &budget) {
+        return None;
+    }
+    confirmed(fix, dictionary, &quiet)
+}
+
+/// `candidate`, when a full read finds at least one reading.
+fn confirmed(candidate: String, dictionary: &Dictionary, quiet: &Options) -> Option<String> {
+    matches!(
+        interpret(&candidate, dictionary, quiet),
+        Interpretation::Unique(_) | Interpretation::Ambiguous { .. }
+    )
+    .then_some(candidate)
+}
+
 /// Searches single-character edits of `input`, nearest to `near` first, for one that reads.
 pub(crate) fn suggest(
     input: &str,
@@ -45,13 +68,7 @@ pub(crate) fn suggest(
             && readable(candidate, dictionary, &quiet, &budget)
     };
     // The first edit that reads ends the search, and is offered only if a full read agrees.
-    let confirmed = |candidate: String| {
-        matches!(
-            interpret(&candidate, dictionary, &quiet),
-            Interpretation::Unique(_) | Interpretation::Ambiguous { .. }
-        )
-        .then_some(candidate)
-    };
+    let confirmed = |candidate: String| confirmed(candidate, dictionary, &quiet);
     let edit = |i: usize, replacement: Option<char>, insert: bool| {
         let mut out: String = chars[..i].iter().map(|&(_, c)| c).collect();
         if let Some(c) = replacement {

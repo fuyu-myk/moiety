@@ -27,6 +27,7 @@ fn dictionary() -> Dictionary {
         ("thiophene", "s1cccc1"),
         ("naphthalene", "c1cccc2ccccc12"),
         ("thienothiophene", "c1cc2sccc2s1"),
+        ("imidazole", "[nH]1cncc1"),
     ] {
         d.insert_ring(RingTemplate::new(name, smiles).unwrap())
             .unwrap();
@@ -398,6 +399,35 @@ fn a_group_that_starts_with_a_bond_keeps_the_lowest_position_for_its_host() {
 fn the_longest_ring_formula_wins() {
     reads_as("2,5-(CH3)2C6H2S2", "Cc1csc2c(C)csc12");
     reads_as("4-CH3OC6H4CHO", "COc1ccc(C=O)cc1");
+}
+
+#[test]
+fn templates_take_bracketed_locants_and_locants_after_substituents() {
+    reads_as("C5H3N(2-Cl)(6-Cl)", "Clc1cccc(Cl)n1");
+    reads_as("C5H3N(2,6-Cl2)", "Clc1cccc(Cl)n1");
+    reads_as("C5H3NCl2-2,6", "Clc1cccc(Cl)n1");
+    reads_as("C5H3NCl-2-CH3-6", "Cc1cccc(Cl)n1");
+    reads_as("C4H3SCH3-2", "Cc1cccs1");
+    reads_as("C10H7(1-OH)", "Oc1cccc2ccccc12");
+    for input in [
+        "C5H3N(2-Cl)",
+        "C5H3NCl-2",
+        "CH3C5H3N(2-Cl)(6-Cl)",
+        "C5H3N(1-Cl)(2-Cl)",
+        "C5H3NCl2-1,2",
+        "C5H4N(2-Cl)CH3",
+    ] {
+        assert_eq!(error_code(input), Code::LocantMismatch, "{input}");
+    }
+}
+
+#[test]
+fn locant_suggestions_keep_the_element() {
+    let notes = match read("3-CH3C3H3N2") {
+        Interpretation::Invalid { diagnostics } => diagnostics[0].notes.clone(),
+        other => panic!("expected invalid, got {}", other.kind()),
+    };
+    assert_eq!(notes, ["did you mean 1-CH3C3H3N2?"]);
 }
 
 #[test]

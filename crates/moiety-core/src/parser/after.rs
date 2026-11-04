@@ -53,10 +53,10 @@ impl Parser<'_> {
         if self.locant_follows() {
             return self.locants_first(ring).map(Some);
         }
-        if benzene && self.trailing_locant_ahead() {
+        if self.trailing_locant_ahead() {
             return self.locants_last(ring).map(Some);
         }
-        if benzene && self.bracketed_follows() {
+        if self.bracketed_follows() {
             return self.bracketed(ring).map(|unit| Some((unit, Vec::new())));
         }
         self.pos = start;
@@ -236,8 +236,9 @@ impl Parser<'_> {
     }
 
     /// Parses bracketed substituents after a ring, each starting with its locant,
-    /// as the `(2-Cl)(4-F)` of `C6H3(2-Cl)(4-F)`. Position 1 is left for the bond to
-    /// the unit before the ring or, when there is none, the units after the brackets.
+    /// as the `(2-Cl)(4-F)` of `C6H3(2-Cl)(4-F)`. Position 1 of benzene is left for
+    /// the bond to the unit before the ring or, when there is none, the units after
+    /// the brackets. A template ring's brackets fill every substituted position.
     fn bracketed(&mut self, ring: Ring) -> Result<Unit, SyntaxError> {
         let mut written: Vec<Written> = Vec::new();
         let mut end = ring.span;

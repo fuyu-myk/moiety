@@ -15,10 +15,10 @@ use crate::reading::{
 };
 use crate::smiles::write_within;
 use crate::span::Span;
-use crate::suggest::suggest;
+use crate::suggest::{check_fix, suggest};
 
 /// Version of the grammar this crate implements.
-pub const GRAMMAR_VERSION: u32 = 3;
+pub const GRAMMAR_VERSION: u32 = 4;
 /// Version of the ranking policy this crate implements.
 pub const RANKING_POLICY_VERSION: u32 = 2;
 /// Longest formula, in bytes, that [`interpret`] accepts.
@@ -265,6 +265,7 @@ fn component(
                     ),
                 ),
                 input,
+                None,
                 dictionary,
                 options,
             )));
@@ -288,13 +289,23 @@ fn component(
     }
     if trees.is_empty() {
         let error = syntax.expect("a lattice has at least one path");
+        let span = original(error.span);
+        let fixed = error.fix.and_then(|(from, to)| {
+            let at = span.start + input.get(span.start..span.end)?.find(from)?;
+            Some(format!(
+                "{}{to}{}",
+                &input[..at],
+                &input[at + from.len_utf8()..]
+            ))
+        });
         return Outcome::Invalid(Box::new(with_suggestion(
             Diagnostic::new(
                 error.code,
                 title(error.code),
-                Label::new(original(error.span), error.message),
+                Label::new(span, error.message),
             ),
             input,
+            fixed,
             dictionary,
             options,
         )));
@@ -375,6 +386,7 @@ fn component(
         return Outcome::Invalid(Box::new(with_suggestion(
             to_diagnostic(&failure, normalized),
             input,
+            None,
             dictionary,
             options,
         )));
@@ -863,16 +875,20 @@ fn to_diagnostic(failure: &Failure, normalized: &Normalized) -> Diagnostic {
     diagnostic
 }
 
+/// Adds a "did you mean" note: `fixed`, the error's own fix applied to `input`,
+/// when it reads, and otherwise the nearest single-character edit that reads.
 fn with_suggestion(
     diagnostic: Diagnostic,
     input: &str,
+    fixed: Option<String>,
     dictionary: &Dictionary,
     options: &Options,
 ) -> Diagnostic {
     if !options.suggestions {
         return diagnostic;
     }
-    match suggest(input, diagnostic.primary.span, dictionary, options) {
+    let fixed = fixed.and_then(|fix| check_fix(fix, dictionary, options));
+    match fixed.or_else(|| suggest(input, diagnostic.primary.span, dictionary, options)) {
         Some(fixed) => diagnostic.with_note(format!("did you mean {fixed}?")),
         None => diagnostic,
     }

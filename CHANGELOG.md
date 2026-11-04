@@ -2,6 +2,20 @@
 
 Notable changes to the moiety crates. Versions follow [Semantic Versioning](https://semver.org/); before 1.0, a minor version can change how formulas are read. The grammar, the ranking policy, the bundled dictionary and the conformance suite carry their own versions, given where they change.
 
+## Unreleased
+
+Grammar version 4.
+
+### Added
+
+- Template rings take bracketed locants and locants after their substituents, as benzene does. They must fill every substituted position, with nothing before the ring: `C5H3N(2-Cl)(6-Cl)`, `C9H6N(8-OH)`, `C5H3NCl2-2,6`, `C5H3NCl-2-CH3-6` (grammar section 6.12).
+
+### Changed
+
+- A bracket that starts with a locant after a template ring now holds bracketed substituents, as it does after benzene, and a phenyl spelling in it is part of the substituent. So `C5H4N(2-OPh)` reads as 2-phenoxypyridine, and `C5H4N(4-ClPh)` is an error, as `C6H4(4-ClPh)` already was, instead of an underdetermined ring.
+- Units after a template ring whose brackets fill it, as in `C5H4N(2-Cl)CH3`, get CF0108 at the ring instead of CF0204.
+- A locant that lists a position whose atom cannot take a substituent suggests the nearest position with the same element that can: `3-MeC3H3N2` suggests `1-MeC3H3N2`, the nitrogen that holds a hydrogen.
+
 ## 0.5.0 - 2026-11-03
 
 Grammar version 3, dictionary 1.4.0, conformance suite 0.5.0.
