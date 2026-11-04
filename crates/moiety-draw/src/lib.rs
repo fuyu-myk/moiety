@@ -3,7 +3,7 @@
 //!
 //! Three layers build on each other:
 //!
-//! - [`layout`](mod@layout) places every atom in the plane, one unit per bond, with
+//! - [`layout`](mod@layout) places every atom in the plane, about one unit per bond, with
 //!   zig-zag chains, regular-polygon rings, evenly spaced branches around a hub
 //!   such as the phosphorus of `PPh3`, and components side by side.
 //! - [`svg`] draws a layout as a self-contained SVG in the usual skeletal

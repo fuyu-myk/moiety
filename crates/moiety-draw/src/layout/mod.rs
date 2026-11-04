@@ -55,7 +55,9 @@ pub const COMPONENT_GAP: f64 = 2.0;
 
 /// Coordinates for every atom of a molecule, one unit per bond length, `y` downward.
 ///
-/// Bonds are one unit long, except those of a crowded hub, which may stretch to 1.5.
+/// Most bonds are one unit long. A crowded hub's bonds may stretch, a bridge
+/// across a ring may be shorter, and a template keeps its source's lengths, all
+/// between 0.55 and 1.6.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Layout {
     positions: Vec<Point>,
@@ -91,10 +93,10 @@ impl Layout {
 
 /// Lays out `molecule` for a skeletal drawing.
 ///
-/// Every bond is one unit long, except the bonds of a hub whose branches would
-/// crowd each other, which stretch equally up to 1.5. Rings come from a smallest-ring basis, so fused
-/// and bridged systems are accepted; shapes beyond isolated and edge-fused rings
-/// get an approximate but complete drawing.
+/// Bond lengths are as [`Layout`] describes. Rings come from a smallest-ring
+/// basis, so fused and bridged systems are accepted: macrocycles, cages and
+/// bridged polycycles get the drawings the module documentation lists, and any
+/// other shape an approximate but complete one.
 #[must_use]
 pub fn layout(molecule: &Molecule) -> Layout {
     let adjacency = molecule.adjacency();
