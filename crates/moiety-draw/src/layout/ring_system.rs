@@ -32,7 +32,7 @@ pub(super) fn layout_system(
     molecule: &Molecule,
     adjacency: &Adjacency,
 ) -> Vec<Option<Point>> {
-    let frame = Frame::new(system, molecule, adjacency);
+    let frame = Frame::new(info, system, molecule, adjacency);
     if frame.scored() {
         if let Some(local) = templates::matched(&frame, adjacency.len()) {
             return local;

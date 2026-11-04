@@ -511,6 +511,89 @@ fn templates_draw_porphine_morphine_and_norbornane_as_chemists_do() {
 }
 
 #[test]
+fn steroids_are_drawn_the_usual_way_round() {
+    for (name, input) in [
+        (
+            "cholesterol",
+            "C[C@H](CCCC(C)C)[C@H]1CC[C@@H]2[C@@]1(CC[C@H]3[C@H]2CC=C4[C@@]3(CC[C@@H](C4)O)C)C",
+        ),
+        (
+            "testosterone",
+            "C[C@]12CC[C@H]3[C@H]([C@@H]1CC[C@@H]2O)CCC4=CC(=O)CC[C@]34C",
+        ),
+        (
+            "testosterone from the A ring",
+            "C[C@@]12CCC(=O)C=C1CC[C@@H]1[C@@H]2CC[C@]2(C)[C@@H](O)CC[C@@H]12",
+        ),
+        (
+            "estradiol",
+            "C[C@]12CC[C@H]3[C@H]([C@@H]1CC[C@@H]2O)CCC4=C3C=CC(=C4)O",
+        ),
+    ] {
+        let molecule = smiles::parse(input).unwrap();
+        let drawn = layout(&molecule);
+        let centres: Vec<(usize, Point)> = drawn
+            .rings()
+            .iter()
+            .enumerate()
+            .map(|(i, ring)| (ring.len(), drawn.ring_centre(i).unwrap()))
+            .collect();
+        let (_, d) = centres.iter().find(|(size, _)| *size == 5).unwrap();
+        for (_, centre) in centres.iter().filter(|(size, _)| *size == 6) {
+            assert!(centre.x < d.x, "{name}: ring D is on the right");
+            assert!(
+                centre.y > d.y - 1.0,
+                "{name}: ring D is not below the others"
+            );
+        }
+        let adjacency = molecule.adjacency();
+        for (atom, links) in adjacency.iter().enumerate() {
+            let &[(ring_atom, _)] = links.as_slice() else {
+                continue;
+            };
+            if adjacency[ring_atom].len() == 4
+                && molecule.atoms()[atom]
+                    .element()
+                    .is_some_and(|e| e.symbol() == "C")
+            {
+                assert!(
+                    (heading(&drawn, ring_atom, atom) + 90.0).abs() < 10.0,
+                    "{name}: the angular methyl {atom} points up, not {}",
+                    heading(&drawn, ring_atom, atom)
+                );
+            }
+        }
+    }
+}
+
+/// Paclitaxel takes PubChem's drawing, where the methyls of the bridging C15
+/// cross the bonds beside it, as they do in the usual drawing; artemisinin
+/// takes one where nothing crosses.
+#[test]
+fn taxanes_and_artemisinin_take_their_usual_drawings() {
+    let paclitaxel = smiles::parse(
+        "CC1=C2[C@H](C(=O)[C@@]3([C@H](C[C@@H]4[C@]([C@H]3[C@@H]([C@@](C2(C)C)(C[C@@H]1OC(=O)[C@@H]([C@H](C5=CC=CC=C5)NC(=O)C6=CC=CC=C6)O)O)OC(=O)C7=CC=CC=C7)(CO4)OC(=O)C)O)C)OC(=O)C",
+    )
+    .unwrap();
+    let drawn = layout(&paclitaxel);
+    let methyls = [15, 16];
+    let crossed = crossings(&paclitaxel, &drawn);
+    assert!(!crossed.is_empty() && crossed.len() <= 2);
+    for (x, y) in crossed {
+        let bonds = [paclitaxel.bonds()[x], paclitaxel.bonds()[y]];
+        assert!(
+            bonds
+                .iter()
+                .any(|b| methyls.contains(&b.a) || methyls.contains(&b.b)),
+            "only the C15 methyls cross: {bonds:?}"
+        );
+    }
+    let artemisinin =
+        smiles::parse("C[C@@H]1CC[C@H]2[C@H](C(=O)O[C@H]3[C@@]24[C@H]1CC[C@](O3)(OO4)C)C").unwrap();
+    assert_eq!(crossings(&artemisinin, &layout(&artemisinin)), []);
+}
+
+#[test]
 fn double_bonds_keep_the_configuration_their_smiles_gives() {
     for input in [
         "F/C=C\\F",

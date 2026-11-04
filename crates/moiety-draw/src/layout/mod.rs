@@ -14,9 +14,12 @@
 //! - double bonds keep the cis or trans configuration their source gave, in
 //!   chains and in macrocycles;
 //! - rings are regular polygons with substituents pointing away from the ring
-//!   centre, and rings fused on an edge lie on opposite sides of it;
-//! - porphyrins, the morphine skeleton and norbornanes take fixed drawings
-//!   from PubChem's depictions, so that they look the way they are usually drawn;
+//!   centre, and rings fused on an edge lie on opposite sides of it; where the
+//!   angles at an atom are nearly even, its substituents take the one that no
+//!   ring fills;
+//! - porphyrins, the morphine skeleton, norbornanes, steroids, taxanes and
+//!   artemisinin take fixed drawings from PubChem's depictions, so that they
+//!   look the way they are usually drawn;
 //! - a ring of 12 to 46 atoms is a closed zig-zag on a hexagonal lattice, the
 //!   way macrocycles are drawn, with the atoms that carry other rings or the
 //!   largest substituents on its outward corners;

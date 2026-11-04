@@ -3,9 +3,9 @@
 
 use moiety_core::Molecule;
 
-use super::geometry::{EPSILON, Point, largest_gap};
+use super::geometry::{EPSILON, Point, open_gap};
 use crate::graph::{self, Adjacency};
-use crate::rings::RingSystem;
+use crate::rings::{RingInfo, RingSystem};
 
 /// Atoms of a ring system closer than this, in bond lengths, are crowded.
 pub(super) const CLEARANCE: f64 = 0.5;
@@ -71,21 +71,28 @@ impl Quality {
 }
 
 /// A ring system's bonds, and for each of its atoms the neighbours inside it and
-/// the number outside it, which become stubs one bond long in the atom's widest
-/// free angle once its neighbours inside are placed.
+/// the number outside it, which become stubs one bond long in the free angle
+/// [`open_gap`] chooses once its neighbours inside are placed.
 pub(super) struct Frame {
     atoms: Vec<usize>,
     bonds: Vec<(usize, usize)>,
     inside: Vec<Vec<usize>>,
     outside: Vec<usize>,
     branches: Vec<usize>,
+    /// The corners of the system's rings, sorted, as [`RingInfo::corners`] gives them.
+    corners: Vec<(usize, usize, usize)>,
     /// Stereo double bonds between two atoms of the system: the atoms, a
     /// neighbour of each and whether those neighbours are cis.
     double_bonds: Vec<(usize, usize, usize, usize, bool)>,
 }
 
 impl Frame {
-    pub(super) fn new(system: &RingSystem, molecule: &Molecule, adjacency: &Adjacency) -> Self {
+    pub(super) fn new(
+        info: &RingInfo,
+        system: &RingSystem,
+        molecule: &Molecule,
+        adjacency: &Adjacency,
+    ) -> Self {
         let member = |atom: usize| system.atoms.binary_search(&atom).is_ok();
         let double_bonds = molecule
             .double_bond_stereo()
@@ -95,6 +102,12 @@ impl Frame {
                 (bond.a, bond.b, d.neighbours.0, d.neighbours.1, d.cis)
             })
             .filter(|&(a, b, ..)| member(a) && member(b))
+            .collect();
+        let corners: Vec<(usize, usize, usize)> = info
+            .corners()
+            .iter()
+            .copied()
+            .filter(|&(atom, ..)| member(atom))
             .collect();
         let mut inside = vec![Vec::new(); adjacency.len()];
         let mut outside = vec![0; adjacency.len()];
@@ -119,6 +132,7 @@ impl Frame {
             inside,
             outside,
             branches,
+            corners,
             double_bonds,
         }
     }
@@ -304,14 +318,18 @@ impl Frame {
         let Some(origin) = local[atom].filter(|_| count > 0) else {
             return Vec::new();
         };
-        let directions: Option<Vec<f64>> = self.inside[atom]
+        let directions: Option<Vec<(usize, f64)>> = self.inside[atom]
             .iter()
-            .map(|&n| local[n].map(|p| (p - origin).angle()))
+            .map(|&n| local[n].map(|p| (n, (p - origin).angle())))
             .collect();
         let Some(directions) = directions else {
             return Vec::new();
         };
-        let (start, width) = largest_gap(directions);
+        let (start, width) = open_gap(&directions, |a, b| {
+            self.corners
+                .binary_search(&(atom, a.min(b), a.max(b)))
+                .is_ok()
+        });
         (1..=count)
             .map(|j| origin + Point::from_angle(start + width * j as f64 / (count + 1) as f64))
             .collect()

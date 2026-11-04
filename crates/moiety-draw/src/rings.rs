@@ -16,6 +16,7 @@ pub(crate) struct RingInfo {
     systems: Vec<RingSystem>,
     atom_system: Vec<Option<usize>>,
     ring_bonds: Vec<bool>,
+    corners: Vec<(usize, usize, usize)>,
 }
 
 /// Rings that share atoms, laid out together as one rigid unit.
@@ -52,11 +53,13 @@ impl RingInfo {
                 atom_system[atom] = Some(index);
             }
         }
+        let corners = fused_corners(&rings);
         Self {
             rings,
             systems,
             atom_system,
             ring_bonds,
+            corners,
         }
     }
 
@@ -75,10 +78,51 @@ impl RingInfo {
         self.atom_system.get(atom).copied().flatten()
     }
 
+    /// The corners where a ring fills the angle at an atom, sorted, each as
+    /// `(atom, lower neighbour, higher neighbour)`. Only rings that share at
+    /// most one bond with every other ring count: a bridged ring may be drawn
+    /// in perspective, where its smallest rings are not the faces drawn.
+    pub(crate) fn corners(&self) -> &[(usize, usize, usize)] {
+        &self.corners
+    }
+
+    /// Whether a ring runs from `a` through `atom` to `b`, filling the angle
+    /// between them, as [`RingInfo::corners`] counts them.
+    pub(crate) fn fills(&self, a: usize, atom: usize, b: usize) -> bool {
+        self.corners
+            .binary_search(&(atom, a.min(b), a.max(b)))
+            .is_ok()
+    }
+
     /// Whether bond `index` lies on a cycle.
     pub(crate) fn is_ring_bond(&self, index: usize) -> bool {
         self.ring_bonds.get(index).copied().unwrap_or(false)
     }
+}
+
+/// The corners of the rings that share at most two atoms with every other
+/// ring, sorted, as [`RingInfo::corners`] describes them.
+fn fused_corners(rings: &[Vec<usize>]) -> Vec<(usize, usize, usize)> {
+    let shared = |a: &[usize], b: &[usize]| a.iter().filter(|atom| b.contains(atom)).count();
+    let mut corners: Vec<(usize, usize, usize)> = rings
+        .iter()
+        .enumerate()
+        .filter(|&(i, ring)| {
+            rings
+                .iter()
+                .enumerate()
+                .all(|(j, other)| i == j || shared(ring, other) <= 2)
+        })
+        .flat_map(|(_, ring)| {
+            let n = ring.len();
+            (0..n).map(move |i| {
+                let (before, after) = (ring[(i + n - 1) % n], ring[(i + 1) % n]);
+                (ring[i], before.min(after), before.max(after))
+            })
+        })
+        .collect();
+    corners.sort_unstable();
+    corners
 }
 
 /// The ring rotated to start at its lowest atom, running toward the lower of that atom's two ring neighbours.
@@ -196,6 +240,16 @@ mod tests {
         assert_eq!(info.system_of(6), None);
         assert!(info.is_ring_bond(0));
         assert!(!info.is_ring_bond(6));
+    }
+
+    #[test]
+    fn fills_the_corners_of_fused_rings_only() {
+        let decalin = perceive("C1CCC2CCCCC2C1");
+        assert!(decalin.fills(2, 3, 8) && decalin.fills(8, 3, 4));
+        assert!(!decalin.fills(2, 3, 4) && !decalin.fills(0, 3, 4));
+        let norbornane = perceive("C1CC2CCC1C2");
+        assert!(!norbornane.fills(1, 2, 3) && !norbornane.fills(1, 2, 6));
+        assert_eq!(norbornane.corners().len(), 0);
     }
 
     #[test]

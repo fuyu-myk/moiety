@@ -6,6 +6,10 @@ use std::ops::{Add, Mul, Neg, Sub};
 /// Lengths below this are treated as zero.
 pub(crate) const EPSILON: f64 = 1e-9;
 
+/// How much narrower than the widest gap, in radians, an open gap may be and
+/// still take a substituent: 15 degrees.
+const NEAR_TIE: f64 = 0.26;
+
 /// A point, or a vector, in the plane.
 ///
 /// In a [`Layout`](super::Layout) one unit is one bond length. `x` grows to the
@@ -139,18 +143,52 @@ pub(crate) fn centroid(points: impl IntoIterator<Item = Point>) -> Option<Point>
 /// One direction leaves a full turn starting at that direction; none leaves a
 /// full turn starting at angle zero.
 pub(crate) fn largest_gap(directions: impl IntoIterator<Item = f64>) -> (f64, f64) {
-    let mut angles: Vec<f64> = directions.into_iter().map(|a| a.rem_euclid(TAU)).collect();
-    angles.sort_by(f64::total_cmp);
-    let Some(&first) = angles.first() else {
+    let directions: Vec<(usize, f64)> = directions.into_iter().enumerate().collect();
+    open_gap(&directions, |_, _| false)
+}
+
+/// The widest angular gap between the directions to `neighbours`, given as
+/// `(neighbour, angle)`, as `(start angle, width)`. A gap that a ring fills,
+/// between two neighbours for which `filled` holds, gives way to an open gap
+/// less than [`NEAR_TIE`] narrower, so that substituents point out of rings
+/// whose angles are nearly even.
+pub(crate) fn open_gap(
+    neighbours: &[(usize, f64)],
+    filled: impl Fn(usize, usize) -> bool,
+) -> (f64, f64) {
+    let mut sorted: Vec<(usize, f64)> = neighbours
+        .iter()
+        .map(|&(n, angle)| (n, angle.rem_euclid(TAU)))
+        .collect();
+    sorted.sort_by(|x, y| x.1.total_cmp(&y.1));
+    let count = sorted.len();
+    let gaps: Vec<(f64, f64, bool)> = (0..count)
+        .map(|i| {
+            let ((a, from), (b, to)) = (sorted[i], sorted[(i + 1) % count]);
+            let width = if i + 1 < count {
+                to - from
+            } else {
+                to + TAU - from
+            };
+            (from, width, count > 1 && filled(a, b))
+        })
+        .collect();
+    let widest = |open_only: bool| {
+        gaps.iter().filter(|gap| !(open_only && gap.2)).fold(
+            None,
+            |best: Option<(f64, f64)>, &(start, width, _)| match best {
+                Some(best) if width <= best.1 + EPSILON => Some(best),
+                _ => Some((start, width)),
+            },
+        )
+    };
+    let Some(any) = widest(false) else {
         return (0.0, TAU);
     };
-    angles
-        .iter()
-        .zip(angles.iter().skip(1).chain([&(first + TAU)]))
-        .map(|(&from, &to)| (from, to - from))
-        .fold((first, 0.0), |best, gap| {
-            if gap.1 > best.1 + EPSILON { gap } else { best }
-        })
+    match widest(true) {
+        Some(open) if open.1 > any.1 - NEAR_TIE => open,
+        _ => any,
+    }
 }
 
 /// Circumradius of a regular polygon with `sides` sides of length 1.
@@ -211,6 +249,20 @@ mod tests {
         let (start, width) = largest_gap([PI]);
         assert!(close(start, PI) && close(width, TAU));
         assert_eq!(largest_gap([]), (0.0, TAU));
+    }
+
+    #[test]
+    fn prefers_a_gap_no_ring_fills_when_it_is_nearly_the_widest() {
+        let neighbours = [(1, 0.0), (2, 2.15), (3, 4.2)];
+        let filled = |a: usize, b: usize| a + b != 4;
+        let (start, width) = open_gap(&neighbours, filled);
+        assert!(close(start, 4.2) && close(width, TAU - 4.2));
+        let (start, _) = open_gap(&neighbours, |_, _| false);
+        assert!(close(start, 0.0));
+        let lopsided = [(1, 0.0), (2, 2.6), (3, 4.2)];
+        let (start, _) = open_gap(&lopsided, filled);
+        assert!(close(start, 0.0), "a much wider filled gap still wins");
+        assert_eq!(open_gap(&[(7, PI)], filled), (PI, TAU));
     }
 
     #[test]

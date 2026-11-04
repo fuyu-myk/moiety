@@ -12,7 +12,7 @@ use std::f64::consts::{FRAC_PI_2, FRAC_PI_3, FRAC_PI_6, PI, TAU};
 
 use moiety_core::Molecule;
 
-use super::geometry::{EPSILON, Point, largest_gap};
+use super::geometry::{EPSILON, Point, open_gap};
 use super::hub;
 use super::macrocycle;
 use super::ring_system::layout_system;
@@ -158,13 +158,20 @@ impl<'a> Placer<'a> {
     /// Direction from `atom` into the widest free angle between its neighbours placed in `local`.
     fn outward(&self, atom: usize, local: &[Option<Point>]) -> f64 {
         let origin = local[atom].unwrap_or_default();
-        let (start, width) = largest_gap(
+        let (start, width) = self.free_gap(
+            atom,
             self.adjacency[atom]
                 .iter()
-                .filter_map(|&(next, _)| local[next])
-                .map(|p| (p - origin).angle()),
+                .filter_map(|&(next, _)| Some((next, local[next]? - origin))),
         );
         start + width / 2.0
+    }
+
+    /// The gap that substituents of `atom` take between the given offsets to
+    /// its neighbours, as [`open_gap`] chooses it.
+    fn free_gap(&self, atom: usize, offsets: impl Iterator<Item = (usize, Point)>) -> (f64, f64) {
+        let directions: Vec<(usize, f64)> = offsets.map(|(n, d)| (n, d.angle())).collect();
+        open_gap(&directions, |a, b| self.rings.fills(a, atom, b))
     }
 
     /// Places every unplaced neighbour of `atom`.
@@ -257,7 +264,7 @@ impl<'a> Placer<'a> {
     fn gap_slots(&self, atom: usize, placed: &[usize], pending: &[usize]) -> Vec<(usize, f64)> {
         let origin = self.position(atom);
         let (start, width) =
-            largest_gap(placed.iter().map(|&n| (self.position(n) - origin).angle()));
+            self.free_gap(atom, placed.iter().map(|&n| (n, self.position(n) - origin)));
         let parts = (pending.len() + 1) as f64;
         pending
             .iter()
