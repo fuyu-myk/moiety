@@ -16,6 +16,7 @@ use super::geometry::{EPSILON, Point, centroid, circumradius};
 use super::macrocycle;
 use super::quality::Frame;
 use super::relax::relax;
+use super::templates;
 use crate::graph::Adjacency;
 use crate::rings::{RingInfo, RingSystem};
 
@@ -29,6 +30,11 @@ pub(super) fn layout_system(
     adjacency: &Adjacency,
 ) -> Vec<Option<Point>> {
     let frame = Frame::new(system, adjacency);
+    if frame.scored() {
+        if let Some(local) = templates::matched(&frame, adjacency.len()) {
+            return local;
+        }
+    }
     let rings: Vec<&[usize]> = system
         .rings
         .iter()
@@ -497,7 +503,7 @@ mod tests {
 
     #[test]
     fn draws_a_bridge_inside_its_ring() {
-        let (molecule, local) = system_layout("C1CC2CCC1C2");
+        let (molecule, local) = system_layout("C1CC2CCCC(C1)C2");
         assert!(
             bond_lengths(&molecule, &local)
                 .iter()

@@ -447,7 +447,6 @@ fn crossings(molecule: &Molecule, layout: &Layout) -> Vec<(usize, usize)> {
 #[test]
 fn bridged_ring_systems_draw_without_crossings() {
     for (name, input) in [
-        ("norbornane", "C1CC2CCC1C2"),
         ("bicyclo[2.2.2]octane", "C1CC2CCC1CC2"),
         ("quinuclidine", "C1CN2CCC1CC2"),
         ("tropine", "CN1C2CCC1CC(O)C2"),
@@ -477,4 +476,36 @@ fn bridged_ring_systems_draw_without_crossings() {
             );
         }
     }
+}
+
+#[test]
+fn templates_draw_porphine_morphine_and_norbornane_as_chemists_do() {
+    let porphine = smiles::parse("C1=CC2=CC3=CC=C(N3)C=C4C=CC(=N4)C=C5C=CC(=N5)C=C1N2").unwrap();
+    let drawn = layout(&porphine);
+    assert_eq!(crossings(&porphine, &drawn), []);
+    let p = drawn.positions();
+    let centre = super::centroid(p.iter().copied()).unwrap();
+    let mut by_distance: Vec<usize> = (0..p.len()).collect();
+    by_distance.sort_by(|&a, &b| p[a].distance(centre).total_cmp(&p[b].distance(centre)));
+    let inner: Vec<bool> = by_distance[..4]
+        .iter()
+        .map(|&a| {
+            porphine.atoms()[a]
+                .element()
+                .is_some_and(|e| e.symbol() == "N")
+        })
+        .collect();
+    assert_eq!(inner, [true; 4], "the nitrogens point to the centre");
+
+    let morphine = smiles::parse("CN1CCC23C4C1CC5=C2C(=C(C=C5)O)OC3C(C=C4)O").unwrap();
+    assert!(crossings(&morphine, &layout(&morphine)).len() <= 1);
+
+    let camphor = smiles::parse("CC1(C)C2CCC1(C)C(=O)C2").unwrap();
+    let drawn = layout(&camphor);
+    let longest = camphor
+        .bonds()
+        .iter()
+        .map(|b| drawn.positions()[b.a].distance(drawn.positions()[b.b]))
+        .fold(0.0, f64::max);
+    assert!(longest > 1.2, "the bridge is drawn in perspective");
 }

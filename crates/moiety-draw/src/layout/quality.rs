@@ -114,6 +114,21 @@ impl Frame {
         }
     }
 
+    /// The atoms of the ring system.
+    pub(super) fn atoms(&self) -> &[usize] {
+        &self.atoms
+    }
+
+    /// The bonds of the ring system.
+    pub(super) fn bonds(&self) -> &[(usize, usize)] {
+        &self.bonds
+    }
+
+    /// The neighbours of `atom` inside the ring system.
+    pub(super) fn neighbours(&self, atom: usize) -> &[usize] {
+        &self.inside[atom]
+    }
+
     /// Whether the system is small enough for its drawings to be compared.
     pub(super) fn scored(&self) -> bool {
         self.bonds.len() <= MAX_SCORED_BONDS
