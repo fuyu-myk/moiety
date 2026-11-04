@@ -10,10 +10,18 @@
 //!   side, a terminal one such as `C=O` a centred pair, and a triple bond three lines;
 //! - aromatic rings are drawn as a Kekulé structure, or with a circle inside
 //!   when no Kekulé structure exists;
-//! - an attachment point is a short wavy line across the end of its bond.
+//! - an attachment point is a short wavy line across the end of its bond;
+//! - a tetrahedral stereocentre from SMILES gets one wedge or hash, narrow at
+//!   the centre, that shows its configuration; where fused rings meet, the
+//!   wedge or hash leads to a hydrogen drawn for it.
+//!
+//! A wedged bond is drawn as `<g class="bond single wedge">` or
+//! `<g class="bond single hash">`.
 //!
 //! Every atom is drawn as `<g class="atom" data-atom="i">` and every bond as
 //! `<g class="bond single" data-bond="j">` (or `double`, `triple`, `aromatic`).
+//! Hydrogens drawn at stereocentres come after the molecule's own atoms and
+//! bonds, numbered on from them.
 //! A drawing made from a [`Reading`] adds `data-span="start-end"` to both: the
 //! byte span of the original input the atom or bond came from. All strokes and
 //! fills use `currentColor`, so the drawing takes the text colour of the page
@@ -22,12 +30,19 @@
 mod atom;
 mod bond;
 mod label;
+pub(crate) mod shape;
 
-use moiety_core::{BondOrder, Molecule, Provenance, Reading, Span, aromatic};
+use moiety_core::{Atom, BondOrder, Element, Molecule, Provenance, Reading, Span, aromatic};
 
 use crate::layout::{Bounds, Layout, Point, layout};
+use crate::wedge::{HYDROGEN_BOND, Wedged, wedges};
+
+/// Shortest bond to a hydrogen drawn at a stereocentre, in font sizes, that
+/// leaves its wedge plain beside the label. Smaller drawings wedge a ring bond.
+const HYDROGEN_ROOM: f64 = 1.0;
 use crate::xml::escape;
 use label::Label;
+use shape::Shape;
 
 /// Sizes and text of an SVG drawing.
 #[derive(Clone, Debug, PartialEq)]
@@ -108,22 +123,32 @@ struct Scene {
     rings: Vec<Vec<usize>>,
     ring_centres: Vec<Point>,
     circled_rings: Vec<usize>,
+    wedges: Vec<Option<Wedged>>,
     metrics: Metrics,
 }
 
 impl Scene {
     fn new(molecule: &Molecule, metrics: Metrics) -> Self {
         let geometry = layout(molecule);
-        let (drawable, circled_rings) = kekule(molecule, &geometry);
+        let roomy = HYDROGEN_BOND * metrics.bond >= HYDROGEN_ROOM * metrics.font;
+        let marks = wedges(molecule, geometry.positions(), roomy);
+        let (mut drawable, circled_rings) = kekule(molecule, &geometry);
+        let mut positions = geometry.positions().to_vec();
+        let mut wedges = marks.bonds;
+        for hydrogen in marks.hydrogens {
+            let atom = drawable.add_atom(Atom::new(Element::H));
+            let centre = &mut drawable.atoms_mut()[hydrogen.centre];
+            centre.hydrogens = centre.hydrogens.saturating_sub(1);
+            drawable.add_bond(hydrogen.centre, atom, BondOrder::Single);
+            positions.push(hydrogen.position);
+            wedges.push(Some(Wedged {
+                narrow: hydrogen.centre,
+                wedge: hydrogen.wedge,
+            }));
+        }
         let adjacency = drawable.adjacency();
-        let points: Vec<Point> = geometry
-            .positions()
-            .iter()
-            .map(|&p| p * metrics.bond)
-            .collect();
-        let labels = (0..points.len())
-            .map(|index| Label::for_atom(&drawable, &adjacency, &points, index))
-            .collect();
+        let points: Vec<Point> = positions.iter().map(|&p| p * metrics.bond).collect();
+        let labels = label::labels(&drawable, &adjacency, &points, metrics.font);
         let ring_centres = (0..geometry.rings().len())
             .map(|index| geometry.ring_centre(index).unwrap_or_default() * metrics.bond)
             .collect();
@@ -135,6 +160,7 @@ impl Scene {
             rings: geometry.rings().to_vec(),
             ring_centres,
             circled_rings,
+            wedges,
             metrics,
         }
     }
@@ -176,7 +202,9 @@ fn render(molecule: &Molecule, provenance: Option<&Provenance>, options: &SvgOpt
         let span = span_attribute(provenance.and_then(|p| p.bond_source(index)));
         bond::render(&scene, index, &span, &mut bonds, &mut bounds);
     }
-    bond::render_circles(&scene, &mut bonds, &mut bounds);
+    for circle in bond::circles(&scene, &mut bounds) {
+        circle.write(scene.metrics.line, &mut bonds);
+    }
     let mut atoms = String::new();
     for index in 0..scene.points.len() {
         let span = span_attribute(provenance.and_then(|p| p.atom_source(index)));
@@ -187,6 +215,40 @@ fn render(molecule: &Molecule, provenance: Option<&Provenance>, options: &SvgOpt
         .clone()
         .unwrap_or_else(|| format!("Skeletal structure of {}", molecule.to_smiles()));
     document(&title, metrics, bounds, &bonds, &atoms)
+}
+
+/// A drawing as the marks it is made of, for painters other than SVG.
+pub(crate) struct Picture {
+    /// Every mark: bond strokes, then ring circles, then labels.
+    pub(crate) shapes: Vec<Shape>,
+    /// The box the marks cover, before padding.
+    pub(crate) bounds: Bounds,
+    /// Width of stroked lines, in pixels.
+    pub(crate) line_width: f64,
+    /// Empty margin wanted around the marks, in pixels.
+    pub(crate) padding: f64,
+}
+
+/// The marks of the drawing of `molecule` that [`render_svg`] writes, in the
+/// same pixel coordinates.
+pub(crate) fn picture(molecule: &Molecule, options: &SvgOptions) -> Picture {
+    let metrics = Metrics::new(options);
+    let scene = Scene::new(molecule, metrics);
+    let mut bounds = Bounds::default();
+    let mut shapes = Vec::new();
+    for index in 0..scene.molecule.bonds().len() {
+        shapes.extend(bond::shapes(&scene, index, &mut bounds));
+    }
+    shapes.extend(bond::circles(&scene, &mut bounds));
+    for index in 0..scene.points.len() {
+        shapes.extend(atom::shapes(&scene, index, &mut bounds));
+    }
+    Picture {
+        shapes,
+        bounds,
+        line_width: metrics.line,
+        padding: metrics.padding,
+    }
 }
 
 fn span_attribute(span: Option<Span>) -> String {

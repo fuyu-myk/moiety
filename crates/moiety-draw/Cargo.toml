@@ -1,10 +1,10 @@
 [package]
 name = "moiety-draw"
-description = "Skeletal structure layout and SVG rendering for moiety readings"
+description = "Skeletal structure layout, and SVG, PNG and terminal drawings, for moiety readings"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license = "MIT AND OFL-1.1"
 repository.workspace = true
 homepage.workspace = true
 documentation = "https://docs.rs/moiety-draw"

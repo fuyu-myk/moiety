@@ -422,3 +422,205 @@ fn hubs_that_turns_can_part_keep_unit_bonds() {
         checked(name, &molecule);
     }
 }
+
+/// Pairs of bonds with no atom in common whose segments cross.
+fn crossings(molecule: &Molecule, layout: &Layout) -> Vec<(usize, usize)> {
+    let p = layout.positions();
+    let side = |o: Point, a: Point, b: Point| (a - o).cross(b - o);
+    let bonds = molecule.bonds();
+    let mut found = Vec::new();
+    for (i, x) in bonds.iter().enumerate() {
+        for (j, y) in bonds.iter().enumerate().skip(i + 1) {
+            if [x.a, x.b].iter().any(|a| *a == y.a || *a == y.b) {
+                continue;
+            }
+            let (a, b, c, d) = (p[x.a], p[x.b], p[y.a], p[y.b]);
+            let apart = |s: f64, t: f64| (s > 1e-9 && t < -1e-9) || (s < -1e-9 && t > 1e-9);
+            if apart(side(c, d, a), side(c, d, b)) && apart(side(a, b, c), side(a, b, d)) {
+                found.push((i, j));
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn bridged_ring_systems_draw_without_crossings() {
+    for (name, input) in [
+        ("bicyclo[2.2.2]octane", "C1CC2CCC1CC2"),
+        ("quinuclidine", "C1CN2CCC1CC2"),
+        ("tropine", "CN1C2CCC1CC(O)C2"),
+        ("cocaine", "CN1C2CCC1C(C(C2)OC(=O)c1ccccc1)C(=O)OC"),
+        ("quinine", "COc1ccc2nccc(C(O)C3CC4CCN3CC4C=C)c2c1"),
+    ] {
+        let molecule = smiles::parse(input).unwrap();
+        let layout = layout(&molecule);
+        let p = layout.positions();
+        assert_eq!(crossings(&molecule, &layout), [], "{name}: bonds cross");
+        let adjacency = molecule.adjacency();
+        for i in 0..p.len() {
+            for j in i + 1..p.len() {
+                if graph::bond_between(&adjacency, i, j).is_none() {
+                    assert!(
+                        p[i].distance(p[j]) >= 0.5,
+                        "{name}: atoms {i} and {j} are too close"
+                    );
+                }
+            }
+        }
+        for bond in molecule.bonds() {
+            let length = p[bond.a].distance(p[bond.b]);
+            assert!(
+                (0.55..=1.6).contains(&length),
+                "{name}: bond {bond:?} has length {length}"
+            );
+        }
+    }
+}
+
+#[test]
+fn templates_draw_porphine_morphine_and_norbornane_as_chemists_do() {
+    let porphine = smiles::parse("C1=CC2=CC3=CC=C(N3)C=C4C=CC(=N4)C=C5C=CC(=N5)C=C1N2").unwrap();
+    let drawn = layout(&porphine);
+    assert_eq!(crossings(&porphine, &drawn), []);
+    let p = drawn.positions();
+    let centre = super::centroid(p.iter().copied()).unwrap();
+    let mut by_distance: Vec<usize> = (0..p.len()).collect();
+    by_distance.sort_by(|&a, &b| p[a].distance(centre).total_cmp(&p[b].distance(centre)));
+    let inner: Vec<bool> = by_distance[..4]
+        .iter()
+        .map(|&a| {
+            porphine.atoms()[a]
+                .element()
+                .is_some_and(|e| e.symbol() == "N")
+        })
+        .collect();
+    assert_eq!(inner, [true; 4], "the nitrogens point to the centre");
+
+    let morphine = smiles::parse("CN1CCC23C4C1CC5=C2C(=C(C=C5)O)OC3C(C=C4)O").unwrap();
+    assert!(crossings(&morphine, &layout(&morphine)).len() <= 1);
+
+    let camphor = smiles::parse("CC1(C)C2CCC1(C)C(=O)C2").unwrap();
+    let drawn = layout(&camphor);
+    let longest = camphor
+        .bonds()
+        .iter()
+        .map(|b| drawn.positions()[b.a].distance(drawn.positions()[b.b]))
+        .fold(0.0, f64::max);
+    assert!(longest > 1.2, "the bridge is drawn in perspective");
+}
+
+#[test]
+fn steroids_are_drawn_the_usual_way_round() {
+    for (name, input) in [
+        (
+            "cholesterol",
+            "C[C@H](CCCC(C)C)[C@H]1CC[C@@H]2[C@@]1(CC[C@H]3[C@H]2CC=C4[C@@]3(CC[C@@H](C4)O)C)C",
+        ),
+        (
+            "testosterone",
+            "C[C@]12CC[C@H]3[C@H]([C@@H]1CC[C@@H]2O)CCC4=CC(=O)CC[C@]34C",
+        ),
+        (
+            "testosterone from the A ring",
+            "C[C@@]12CCC(=O)C=C1CC[C@@H]1[C@@H]2CC[C@]2(C)[C@@H](O)CC[C@@H]12",
+        ),
+        (
+            "estradiol",
+            "C[C@]12CC[C@H]3[C@H]([C@@H]1CC[C@@H]2O)CCC4=C3C=CC(=C4)O",
+        ),
+    ] {
+        let molecule = smiles::parse(input).unwrap();
+        let drawn = layout(&molecule);
+        let centres: Vec<(usize, Point)> = drawn
+            .rings()
+            .iter()
+            .enumerate()
+            .map(|(i, ring)| (ring.len(), drawn.ring_centre(i).unwrap()))
+            .collect();
+        let (_, d) = centres.iter().find(|(size, _)| *size == 5).unwrap();
+        for (_, centre) in centres.iter().filter(|(size, _)| *size == 6) {
+            assert!(centre.x < d.x, "{name}: ring D is on the right");
+            assert!(
+                centre.y > d.y - 1.0,
+                "{name}: ring D is not below the others"
+            );
+        }
+        for (ring_atom, methyl) in angular_methyls(&molecule) {
+            let angle = heading(&drawn, ring_atom, methyl);
+            assert!(
+                (angle + 90.0).abs() < 10.0,
+                "{name}: the angular methyl {methyl} points up, not {angle}"
+            );
+        }
+    }
+}
+
+/// Each methyl on an atom with three other neighbours, with that atom.
+fn angular_methyls(molecule: &Molecule) -> Vec<(usize, usize)> {
+    let adjacency = molecule.adjacency();
+    adjacency
+        .iter()
+        .enumerate()
+        .filter_map(|(atom, links)| match links.as_slice() {
+            &[(hub, _)] if adjacency[hub].len() == 4 => Some((hub, atom)),
+            _ => None,
+        })
+        .filter(|&(_, atom)| {
+            molecule.atoms()[atom]
+                .element()
+                .is_some_and(|e| e.symbol() == "C")
+        })
+        .collect()
+}
+
+/// Paclitaxel takes PubChem's drawing, where the methyls of the bridging C15
+/// cross the bonds beside it, as they do in the usual drawing; artemisinin
+/// takes one where nothing crosses.
+#[test]
+fn taxanes_and_artemisinin_take_their_usual_drawings() {
+    let paclitaxel = smiles::parse(
+        "CC1=C2[C@H](C(=O)[C@@]3([C@H](C[C@@H]4[C@]([C@H]3[C@@H]([C@@](C2(C)C)(C[C@@H]1OC(=O)[C@@H]([C@H](C5=CC=CC=C5)NC(=O)C6=CC=CC=C6)O)O)OC(=O)C7=CC=CC=C7)(CO4)OC(=O)C)O)C)OC(=O)C",
+    )
+    .unwrap();
+    let drawn = layout(&paclitaxel);
+    let methyls = [15, 16];
+    let crossed = crossings(&paclitaxel, &drawn);
+    assert!(!crossed.is_empty() && crossed.len() <= 2);
+    for (x, y) in crossed {
+        let bonds = [paclitaxel.bonds()[x], paclitaxel.bonds()[y]];
+        assert!(
+            bonds
+                .iter()
+                .any(|b| methyls.contains(&b.a) || methyls.contains(&b.b)),
+            "only the C15 methyls cross: {bonds:?}"
+        );
+    }
+    let artemisinin =
+        smiles::parse("C[C@@H]1CC[C@H]2[C@H](C(=O)O[C@H]3[C@@]24[C@H]1CC[C@](O3)(OO4)C)C").unwrap();
+    assert_eq!(crossings(&artemisinin, &layout(&artemisinin)), []);
+}
+
+#[test]
+fn double_bonds_keep_the_configuration_their_smiles_gives() {
+    for input in [
+        "F/C=C\\F",
+        "F/C=C/F",
+        "CCCC/C=C\\CCCC",
+        "OC(=O)CCCCCCC/C=C\\CCCCCCCC",
+        "C/C=C/C=C\\C=C/C",
+        "Cc1ccccc1/C=C\\c1ccccc1",
+        "C(C(C)C)C(=C/C(C)C)/C(=C\\C(C)C)CC(C)C",
+        "CC1(C)/C=C/C(C)(C)C(C)(C)C(C)(C)C(C)(C)C(C)(C)C(C)(C)C(C)(C)C(C)(C)C1(C)C",
+    ] {
+        let molecule = smiles::parse(input).unwrap();
+        let drawn = layout(&molecule);
+        let p = drawn.positions();
+        for stereo in molecule.double_bond_stereo() {
+            let bond = molecule.bonds()[stereo.bond];
+            let side = |n: usize| (p[bond.b] - p[bond.a]).cross(p[n] - p[bond.a]);
+            let (a, b) = (side(stereo.neighbours.0), side(stereo.neighbours.1));
+            assert_eq!(a * b > 0.0, stereo.cis, "{input}: bond {}", stereo.bond);
+        }
+    }
+}

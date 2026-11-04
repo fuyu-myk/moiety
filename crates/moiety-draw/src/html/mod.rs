@@ -8,11 +8,12 @@
 //! nothing is loaded from elsewhere, and colours follow `prefers-color-scheme`.
 //!
 //! [`render_fragment`] renders the same body for any interpretation, for pages
-//! that embed the viewer and replace its content as the formula changes.
+//! that embed the viewer and replace its content as the formula changes, and
+//! [`render_smiles_fragment`] a body for a molecule given as SMILES.
 
 use moiety_core::{Diagnostic, Interpretation, Reading, Span, Underdetermination};
 
-use crate::svg::{SvgOptions, render_reading_svg};
+use crate::svg::{SvgOptions, render_reading_svg, render_svg};
 use crate::xml::escape;
 
 /// The viewer's stylesheet.
@@ -74,6 +75,49 @@ pub fn render_fragment(
         }
         _ => formula(input, &[]) + &readings_list(input, interpretation.readings(), options),
     }
+}
+
+/// Renders the body of the viewer for a molecule given as `smiles`: its drawing
+/// and canonical SMILES, or why the string cannot be read. A drawing from SMILES
+/// has no characters to trace.
+///
+/// The fragment has no page around it, as for [`render_fragment`].
+#[must_use]
+pub fn render_smiles_fragment(smiles: &str, options: &SvgOptions) -> String {
+    let heading = format!(
+        "<h1 class=\"formula smiles\" aria-label=\"SMILES {0}\">{0}</h1>\n",
+        escape(smiles)
+    );
+    let molecule = match moiety_core::smiles::parse(smiles) {
+        Ok(molecule) => molecule,
+        Err(error) => {
+            return format!(
+                "{heading}<p class=\"summary\">This SMILES string cannot be read: {}.</p>\n",
+                escape(&error.to_string())
+            );
+        }
+    };
+    let canonical = molecule.to_smiles();
+    let drawing = render_svg(
+        &molecule,
+        &SvgOptions {
+            title: Some(canonical.clone()),
+            ..options.clone()
+        },
+    );
+    format!(
+        concat!(
+            "{heading}<p class=\"summary\">Drawn from SMILES.</p>\n",
+            "<ol class=\"readings\">\n<li class=\"reading\">\n",
+            "<h2>Structure</h2>\n",
+            "<p class=\"smiles\"><code>{smiles}</code></p>\n",
+            "<figure>{drawing}</figure>\n",
+            "</li>\n</ol>\n"
+        ),
+        heading = heading,
+        smiles = escape(&canonical),
+        drawing = drawing,
+    )
 }
 
 /// The formula, one span per character, each with its byte range in `input`.
@@ -232,6 +276,17 @@ mod tests {
             moiety::interpret(input).readings(),
             &SvgOptions::default(),
         )
+    }
+
+    #[test]
+    fn renders_smiles_or_says_why_not() {
+        let html = render_smiles_fragment("c1ccccc1O<", &SvgOptions::default());
+        assert!(html.contains("cannot be read"));
+        assert!(html.contains("c1ccccc1O&lt;"));
+        let html = render_smiles_fragment("Oc1ccccc1", &SvgOptions::default());
+        assert!(html.contains("Drawn from SMILES."));
+        assert!(html.contains("<svg"));
+        assert_eq!(html.matches("<li class=\"reading\"").count(), 1);
     }
 
     #[test]

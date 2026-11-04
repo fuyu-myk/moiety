@@ -11,8 +11,22 @@
 //!   pointing up; when they crowd each other its bonds stretch equally, up to
 //!   1.5 bond lengths, rather than bend;
 //! - atoms with a triple bond or two double bonds (`O=C=O`, allenes) are straight;
+//! - double bonds keep the cis or trans configuration their source gave, in
+//!   chains and in macrocycles;
 //! - rings are regular polygons with substituents pointing away from the ring
-//!   centre, and rings fused on an edge lie on opposite sides of it;
+//!   centre, and rings fused on an edge lie on opposite sides of it; where the
+//!   angles at an atom are nearly even, its substituents take the one that no
+//!   ring fills;
+//! - porphyrins, the morphine skeleton, norbornanes, steroids, taxanes and
+//!   artemisinin take fixed drawings from PubChem's depictions, so that they
+//!   look the way they are usually drawn;
+//! - a ring of 12 to 46 atoms is a closed zig-zag on a hexagonal lattice, the
+//!   way macrocycles are drawn, with the atoms that carry other rings or the
+//!   largest substituents on its outward corners;
+//! - a bridge across a ring is an arc or a shallow bow inside it, chosen so that
+//!   no bonds cross and no atom, or substituent, lands on another; a ring system
+//!   that still draws badly is started from another ring, then relaxed, and the
+//!   most legible drawing is kept;
 //! - a final pass flips or turns branches about single bonds where unbonded
 //!   atoms come too close, stretching a crowded hub's bonds only when no flip or
 //!   turn parts its branches without bending it;
@@ -20,17 +34,21 @@
 //!
 //! The output is deterministic: the same molecule always gets the same coordinates.
 
+mod double_bonds;
 mod geometry;
 mod hub;
+mod macrocycle;
 mod overlap;
 mod place;
+mod quality;
 mod relax;
 mod ring_system;
+mod templates;
 
 use moiety_core::Molecule;
 
 pub use geometry::Point;
-pub(crate) use geometry::{Bounds, EPSILON, centroid};
+pub(crate) use geometry::{Bounds, EPSILON, centroid, largest_gap};
 
 use crate::rings::RingInfo;
 use place::Placer;
@@ -38,9 +56,11 @@ use place::Placer;
 /// Horizontal space between the atoms of neighbouring components, in bond lengths.
 pub const COMPONENT_GAP: f64 = 2.0;
 
-/// Coordinates for every atom of a molecule, one unit per bond length, `y` downward.
+/// Coordinates for every atom of a molecule in bond lengths, `y` downward.
 ///
-/// Bonds are one unit long, except those of a crowded hub, which may stretch to 1.5.
+/// Most bonds are one unit long. A crowded hub's bonds may stretch, a bridge
+/// across a ring may be shorter and a template keeps its source's lengths, all
+/// between 0.55 and 1.6; a cage that only relaxation can draw may stray further.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Layout {
     positions: Vec<Point>,
@@ -76,10 +96,10 @@ impl Layout {
 
 /// Lays out `molecule` for a skeletal drawing.
 ///
-/// Every bond is one unit long, except the bonds of a hub whose branches would
-/// crowd each other, which stretch equally up to 1.5. Rings come from a smallest-ring basis, so fused
-/// and bridged systems are accepted; shapes beyond isolated and edge-fused rings
-/// get an approximate but complete drawing.
+/// Bond lengths are as [`Layout`] describes. Rings come from a smallest-ring
+/// basis, so fused and bridged systems are accepted: macrocycles, cages and
+/// bridged polycycles get the drawings the module documentation lists, and any
+/// other shape an approximate but complete one.
 #[must_use]
 pub fn layout(molecule: &Molecule) -> Layout {
     let adjacency = molecule.adjacency();
@@ -91,6 +111,7 @@ pub fn layout(molecule: &Molecule) -> Layout {
         .map(|component| placer.place(component))
         .collect();
     let mut positions = placer.finish();
+    double_bonds::settle(&mut positions, molecule, &adjacency, &rings);
     for (component, hub) in components.iter().zip(hubs) {
         overlap::resolve(&mut positions, component, molecule, &adjacency, &rings, hub);
     }

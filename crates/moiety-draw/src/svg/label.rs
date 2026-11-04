@@ -3,10 +3,9 @@
 
 use moiety_core::{AtomKind, Element, Molecule};
 
-use super::num;
+use super::shape::{Anchor, Level, Shape, Text};
 use crate::graph::Adjacency;
 use crate::layout::{Bounds, Point};
-use crate::xml::escape;
 
 /// Baseline of label text below the atom position, in font sizes, so capitals sit centred on it.
 const BASELINE: f64 = 0.35;
@@ -26,39 +25,16 @@ enum Side {
     Below,
 }
 
-/// Vertical position of a piece of label text.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Level {
-    Base,
-    Subscript,
-    Superscript,
-}
-
-impl Level {
-    /// Baseline shift in font sizes, positive downward.
-    fn shift(self) -> f64 {
+impl Side {
+    /// The side across the symbol from this one.
+    fn opposite(self) -> Side {
         match self {
-            Level::Base => 0.0,
-            Level::Subscript => 0.3,
-            Level::Superscript => -0.45,
+            Side::Right => Side::Left,
+            Side::Left => Side::Right,
+            Side::Above => Side::Below,
+            Side::Below => Side::Above,
         }
     }
-
-    /// Font size relative to the label font.
-    fn scale(self) -> f64 {
-        match self {
-            Level::Base => 1.0,
-            Level::Subscript | Level::Superscript => 0.7,
-        }
-    }
-}
-
-/// Horizontal alignment of a run of text.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Anchor {
-    Start,
-    Middle,
-    End,
 }
 
 /// A rectangle relative to the atom position, as `(lowest corner, highest corner)`.
@@ -103,38 +79,14 @@ impl Run {
         )
     }
 
-    fn write(&self, centre: Point, font: f64, out: &mut String) {
-        let anchor = match self.anchor {
-            Anchor::Start => "start",
-            Anchor::Middle => "middle",
-            Anchor::End => "end",
-        };
-        let mut shift = 0.0;
-        let mut body = String::new();
-        for (text, level) in &self.pieces {
-            let target = level.shift() * font;
-            let dy = target - shift;
-            shift = target;
-            if *level == Level::Base && dy.abs() < 1e-9 {
-                body.push_str(&escape(text));
-                continue;
-            }
-            let size = match level {
-                Level::Base => String::new(),
-                _ => format!(" font-size=\"{}\"", num(level.scale() * font)),
-            };
-            body.push_str(&format!(
-                "<tspan dy=\"{}\"{size}>{}</tspan>",
-                num(dy),
-                escape(text)
-            ));
+    /// The run placed at the atom position `centre`.
+    fn text(self, centre: Point, font: f64) -> Text {
+        Text {
+            at: centre + self.at,
+            anchor: self.anchor,
+            pieces: self.pieces,
+            font,
         }
-        let at = centre + self.at;
-        out.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"{anchor}\">{body}</text>",
-            num(at.x),
-            num(at.y)
-        ));
     }
 }
 
@@ -165,11 +117,7 @@ impl Label {
         };
         let side = match atom.kind {
             AtomKind::Element(element) if !bonded => free_side(element),
-            _ => bonded_side(
-                adjacency[index]
-                    .iter()
-                    .filter_map(|&(next, _)| (points[next] - points[index]).normalized()),
-            ),
+            _ => bonded_side(&directions(adjacency, points, index)),
         };
         Some(Label {
             symbol: symbol.to_string(),
@@ -196,14 +144,19 @@ impl Label {
             .fold(0.0, f64::max)
     }
 
-    /// Writes the label text centred on `centre`.
-    pub(super) fn render(&self, centre: Point, font: f64, out: &mut String, bounds: &mut Bounds) {
-        for run in self.runs(font) {
-            let (low, high) = run.rect(font, 0.0);
-            bounds.include(centre + low);
-            bounds.include(centre + high);
-            run.write(centre, font, out);
-        }
+    /// The label text centred on `centre`.
+    pub(super) fn shape(&self, centre: Point, font: f64, bounds: &mut Bounds) -> Shape {
+        let runs = self
+            .runs(font)
+            .into_iter()
+            .map(|run| {
+                let (low, high) = run.rect(font, 0.0);
+                bounds.include(centre + low);
+                bounds.include(centre + high);
+                run.text(centre, font)
+            })
+            .collect();
+        Shape::Label { centre, runs }
     }
 
     /// The text runs of the label, the element symbol first.
@@ -282,23 +235,141 @@ fn free_side(element: Element) -> Side {
     }
 }
 
-/// Hydrogen side for an atom with bonds along the unit vectors `directions`:
-/// right if no bond points right, else left, above or below, in that order.
-fn bonded_side(directions: impl Iterator<Item = Point>) -> Side {
-    const REACH: f64 = 0.3;
-    let directions: Vec<Point> = directions.collect();
-    let free = |blocks: &dyn Fn(Point) -> bool| !directions.iter().any(|&d| blocks(d));
-    if free(&|d| d.x > REACH) {
-        Side::Right
-    } else if free(&|d| d.x < -REACH) {
-        Side::Left
-    } else if free(&|d| d.y < -REACH) {
-        Side::Above
-    } else if free(&|d| d.y > REACH) {
-        Side::Below
-    } else {
-        Side::Right
+/// The label of every atom, as [`Label::for_atom`] gives it, except that an
+/// atom whose hydrogens would cover another label moves them to the opposite
+/// side, left for right or above for below, when its bonds leave that side
+/// free and nothing is covered there; a charge stays where it is. Atoms are
+/// settled in order, each against the labels settled before it and the
+/// preferred labels of the rest.
+pub(super) fn labels(
+    molecule: &Molecule,
+    adjacency: &Adjacency,
+    points: &[Point],
+    font: f64,
+) -> Vec<Option<Label>> {
+    let mut settled: Vec<Option<Label>> = (0..points.len())
+        .map(|index| Label::for_atom(molecule, adjacency, points, index))
+        .collect();
+    let mut boxes = Boxes::new(&settled, points, font);
+    for index in 0..points.len() {
+        let Some(label) = settled[index].clone().filter(|l| l.hydrogens > 0) else {
+            continue;
+        };
+        if adjacency[index].is_empty() {
+            continue;
+        }
+        let clear = |side: Side| {
+            let candidate = Label {
+                side,
+                ..label.clone()
+            };
+            placed(&candidate, points[index], font)
+                .skip(1)
+                .all(|rect| boxes.clear(points, index, rect))
+        };
+        let opposite = label.side.opposite();
+        let free = free_sides(&directions(adjacency, points, index));
+        if !clear(label.side) && free.contains(&opposite) && clear(opposite) {
+            let moved = Label {
+                side: opposite,
+                ..label
+            };
+            boxes.rects[index] = placed(&moved, points[index], font).collect();
+            settled[index] = Some(moved);
+        }
     }
+    settled
+}
+
+/// The boxes of the labels of a drawing, with the labelled atoms ordered by
+/// `x` so that those near an atom are found without comparing every pair.
+struct Boxes {
+    rects: Vec<Vec<Rect>>,
+    by_x: Vec<usize>,
+    /// Labels whose atoms are further apart than this in `x` cannot touch.
+    reach: f64,
+}
+
+impl Boxes {
+    fn new(labels: &[Option<Label>], points: &[Point], font: f64) -> Self {
+        let rects: Vec<Vec<Rect>> = labels
+            .iter()
+            .enumerate()
+            .map(|(i, label)| {
+                label
+                    .as_ref()
+                    .map_or_else(Vec::new, |l| placed(l, points[i], font).collect())
+            })
+            .collect();
+        // No run reaches further from its atom than the whole label is wide.
+        let reach = 2.0
+            * rects
+                .iter()
+                .map(|boxes| boxes.iter().map(|(low, high)| high.x - low.x).sum::<f64>())
+                .fold(0.0, f64::max);
+        let mut by_x: Vec<usize> = (0..points.len())
+            .filter(|&i| !rects[i].is_empty())
+            .collect();
+        by_x.sort_by(|&a, &b| points[a].x.total_cmp(&points[b].x));
+        Self { rects, by_x, reach }
+    }
+
+    /// Whether `rect` overlaps no label but that of atom `index`.
+    fn clear(&self, points: &[Point], index: usize, rect: Rect) -> bool {
+        let x = points[index].x;
+        let first = self.by_x.partition_point(|&i| points[i].x < x - self.reach);
+        self.by_x[first..]
+            .iter()
+            .take_while(|&&i| points[i].x <= x + self.reach)
+            .filter(|&&i| i != index)
+            .flat_map(|&i| &self.rects[i])
+            .all(|&other| !overlaps(rect, other))
+    }
+}
+
+/// The boxes [`Label::keep_out`] gives for `label`, placed at `at`.
+fn placed(label: &Label, at: Point, font: f64) -> impl Iterator<Item = Rect> {
+    label
+        .keep_out(font)
+        .into_iter()
+        .map(move |(low, high)| (at + low, at + high))
+}
+
+/// Unit vectors from atom `index` along each of its bonds.
+fn directions(adjacency: &Adjacency, points: &[Point], index: usize) -> Vec<Point> {
+    adjacency[index]
+        .iter()
+        .filter_map(|&(next, _)| (points[next] - points[index]).normalized())
+        .collect()
+}
+
+fn overlaps(a: Rect, b: Rect) -> bool {
+    a.0.x < b.1.x && b.0.x < a.1.x && a.0.y < b.1.y && b.0.y < a.1.y
+}
+
+/// Hydrogen side for an atom with bonds along the unit vectors `directions`:
+/// the first of its free sides, or the right if none is free.
+fn bonded_side(directions: &[Point]) -> Side {
+    free_sides(directions)
+        .first()
+        .copied()
+        .unwrap_or(Side::Right)
+}
+
+/// The sides no bond along the unit vectors `directions` points into: right,
+/// left, above and below, in that order of preference.
+fn free_sides(directions: &[Point]) -> Vec<Side> {
+    const REACH: f64 = 0.3;
+    let blocks = |side: Side, d: Point| match side {
+        Side::Right => d.x > REACH,
+        Side::Left => d.x < -REACH,
+        Side::Above => d.y < -REACH,
+        Side::Below => d.y > REACH,
+    };
+    [Side::Right, Side::Left, Side::Above, Side::Below]
+        .into_iter()
+        .filter(|&side| !directions.iter().any(|&d| blocks(side, d)))
+        .collect()
 }
 
 /// Approximate advance width of `text` in a Helvetica-like face, in font sizes.
@@ -330,8 +401,13 @@ mod tests {
 
     #[test]
     fn hydrogens_go_where_no_bond_points() {
-        let from =
-            |angles: &[f64]| bonded_side(angles.iter().map(|a| Point::from_angle(a.to_radians())));
+        let from = |angles: &[f64]| {
+            let directions: Vec<Point> = angles
+                .iter()
+                .map(|a| Point::from_angle(a.to_radians()))
+                .collect();
+            bonded_side(&directions)
+        };
         assert_eq!(from(&[180.0]), Side::Right);
         assert_eq!(from(&[-30.0]), Side::Left);
         assert_eq!(from(&[30.0, 150.0]), Side::Above);
@@ -339,6 +415,38 @@ mod tests {
         assert_eq!(from(&[-90.0]), Side::Right);
         assert_eq!(free_side(Element::O), Side::Left);
         assert_eq!(free_side(Element::N), Side::Right);
+    }
+
+    #[test]
+    fn moves_hydrogens_off_a_neighbouring_label() {
+        let molecule = moiety_core::smiles::parse("OCCO").unwrap();
+        let adjacency = molecule.adjacency();
+        let sides = |points: &[Point]| -> Vec<Option<Side>> {
+            labels(&molecule, &adjacency, points, 16.0)
+                .iter()
+                .map(|label| label.as_ref().map(|l| l.side))
+                .collect()
+        };
+        let close = [
+            Point::new(0.0, 0.0),
+            Point::new(0.0, -40.0),
+            Point::new(70.0, -40.0),
+            Point::new(36.0, 0.0),
+        ];
+        assert_eq!(
+            sides(&close),
+            [Some(Side::Left), None, None, Some(Side::Left)]
+        );
+        let apart = [
+            Point::new(0.0, 0.0),
+            Point::new(0.0, -40.0),
+            Point::new(90.0, -40.0),
+            Point::new(56.0, 0.0),
+        ];
+        assert_eq!(
+            sides(&apart),
+            [Some(Side::Right), None, None, Some(Side::Left)]
+        );
     }
 
     #[test]
@@ -350,7 +458,9 @@ mod tests {
         );
         assert_eq!(label(0, 2, Side::Right).charge_piece().unwrap().0, "2+");
         let mut out = String::new();
-        label(3, 1, Side::Right).render(Point::default(), 10.0, &mut out, &mut Bounds::default());
+        label(3, 1, Side::Right)
+            .shape(Point::default(), 10.0, &mut Bounds::default())
+            .write(1.0, &mut out);
         assert_eq!(
             out,
             concat!(

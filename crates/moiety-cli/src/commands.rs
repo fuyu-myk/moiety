@@ -1,3 +1,4 @@
+use std::io::{IsTerminal, Write};
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
@@ -7,11 +8,15 @@ use moiety::conformance::{
 };
 use moiety::writer::condense;
 use moiety::{
-    ChargeConvention, Dictionary, Interpretation, Options, Reading, default_dictionary, smiles,
+    ChargeConvention, Dictionary, Interpretation, Molecule, Options, Reading, default_dictionary,
+    smiles,
 };
-use moiety_draw::{SvgOptions, render_html, render_reading_svg};
+use moiety_draw::terminal::{TerminalOptions, Theme, detect, detect_theme, render_terminal};
+use moiety_draw::{
+    RasterOptions, SvgOptions, render_html, render_png, render_reading_svg, render_svg,
+};
 
-use crate::args::{Args, Command, USAGE};
+use crate::args::{Args, Command, Format, USAGE};
 
 pub fn run(args: Args) -> Result<ExitCode> {
     let dictionary = load_dictionary(&args)?;
@@ -54,16 +59,23 @@ fn load_dictionary(args: &Args) -> Result<Dictionary> {
         .with_context(|| format!("in {}", path.display()))
 }
 
-fn emit(args: &Args, text: &str) -> Result<()> {
+fn emit_bytes(args: &Args, bytes: &[u8]) -> Result<()> {
     match &args.output {
         Some(path) => {
-            std::fs::write(path, text).with_context(|| format!("cannot write {}", path.display()))
+            std::fs::write(path, bytes).with_context(|| format!("cannot write {}", path.display()))
         }
         None => {
-            print!("{text}");
-            Ok(())
+            let mut stdout = std::io::stdout().lock();
+            stdout
+                .write_all(bytes)
+                .and_then(|()| stdout.flush())
+                .context("cannot write to standard output")
         }
     }
+}
+
+fn emit(args: &Args, text: &str) -> Result<()> {
+    emit_bytes(args, text.as_bytes())
 }
 
 fn parse(args: &Args, dictionary: &Dictionary, options: &Options) -> Result<ExitCode> {
@@ -200,30 +212,120 @@ fn draw(args: &Args, dictionary: &Dictionary, options: &Options) -> Result<ExitC
             }
         );
     };
+    let svg_options = SvgOptions {
+        title: Some(input.clone()),
+        ..SvgOptions::default()
+    };
+    if args.smiles {
+        if args.command == Command::Html {
+            bail!("html shows the readings of a formula; draw a SMILES string with draw --smiles");
+        }
+        let molecule =
+            smiles::parse(input).with_context(|| format!("cannot read SMILES {input:?}"))?;
+        return show(args, &molecule, || render_svg(&molecule, &svg_options));
+    }
     let result = moiety::interpret_with(input, dictionary, options);
     let readings = result.readings();
     if readings.is_empty() {
         eprint!("{}", describe(input, &result));
         return Ok(ExitCode::FAILURE);
     }
-    let svg_options = SvgOptions {
-        title: Some(input.clone()),
-        ..SvgOptions::default()
-    };
-    let output = if args.command == Command::Html {
-        render_html(input, readings, &svg_options)
-    } else {
-        let reading = readings.get(args.reading - 1).with_context(|| {
-            format!(
-                "{input} has {} reading(s), not {}",
-                readings.len(),
-                args.reading
-            )
-        })?;
+    if args.command == Command::Html {
+        emit(args, &render_html(input, readings, &svg_options))?;
+        return Ok(ExitCode::SUCCESS);
+    }
+    let reading = readings.get(args.reading - 1).with_context(|| {
+        format!(
+            "{input} has {} reading(s), not {}",
+            readings.len(),
+            args.reading
+        )
+    })?;
+    show(args, &reading.molecule, || {
         render_reading_svg(reading, &svg_options)
-    };
-    emit(args, &output)?;
+    })
+}
+
+/// Writes the drawing of `molecule` in the format `args` asks for, or the one
+/// that suits where it goes, using `svg` for SVG.
+fn show(args: &Args, molecule: &Molecule, svg: impl FnOnce() -> String) -> Result<ExitCode> {
+    let getenv = |key: &str| std::env::var(key).ok();
+    let terminal = args.output.is_none() && std::io::stdout().is_terminal();
+    match output_format(args, terminal, getenv) {
+        Format::Svg => emit(args, &svg())?,
+        Format::Png => {
+            if terminal {
+                bail!("PNG output needs -o <file> or a pipe");
+            }
+            let theme = args.theme.unwrap_or(Theme::Light);
+            emit_bytes(args, &render_png(molecule, &png_options(theme)))?;
+        }
+        Format::Terminal(protocol) => {
+            let options = TerminalOptions {
+                protocol,
+                columns: terminal_columns(getenv),
+                theme: args.theme.unwrap_or_else(|| detect_theme(getenv)),
+            };
+            emit(args, &render_terminal(molecule, &options))?;
+        }
+    }
     Ok(ExitCode::SUCCESS)
+}
+
+/// The format `args` asks for, or else PNG for a `.png` output file, the
+/// terminal's own protocol when writing to a `terminal`, and SVG otherwise.
+fn output_format(args: &Args, terminal: bool, getenv: impl Fn(&str) -> Option<String>) -> Format {
+    if let Some(format) = args.format {
+        return format;
+    }
+    let png = args.output.as_ref().is_some_and(|path| {
+        path.extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
+    });
+    if png {
+        Format::Png
+    } else if terminal {
+        Format::Terminal(detect(getenv))
+    } else {
+        Format::Svg
+    }
+}
+
+/// Sizes twice those of SVG, so that PNG files stay sharp on dense screens,
+/// in the colours of `theme` on a transparent background.
+fn png_options(theme: Theme) -> RasterOptions {
+    let svg = SvgOptions::default();
+    RasterOptions {
+        bond_length: 2.0 * svg.bond_length,
+        font_size: 2.0 * svg.font_size,
+        line_width: 2.0 * svg.line_width,
+        padding: 2.0 * svg.padding,
+        ink: if theme == Theme::Dark {
+            [255, 255, 255, 255]
+        } else {
+            [0, 0, 0, 255]
+        },
+        background: [0, 0, 0, 0],
+    }
+}
+
+/// Columns of the terminal: `COLUMNS` if set, else what `stty` reports for the
+/// controlling terminal, else 80.
+fn terminal_columns(getenv: impl Fn(&str) -> Option<String>) -> usize {
+    let stty = || {
+        let tty = std::fs::File::open("/dev/tty").ok()?;
+        let out = std::process::Command::new("stty")
+            .arg("size")
+            .stdin(tty)
+            .output()
+            .ok()?;
+        String::from_utf8(out.stdout).ok()
+    };
+    getenv("COLUMNS")
+        .and_then(|columns| columns.trim().parse().ok())
+        .or_else(|| stty().and_then(|size| size.split_whitespace().nth(1)?.parse().ok()))
+        .filter(|&columns: &usize| columns > 0)
+        .unwrap_or(80)
 }
 
 fn conformance(args: &Args, dictionary: &Dictionary, options: &Options) -> Result<ExitCode> {
@@ -405,7 +507,10 @@ mod tests {
 
     #[test]
     fn draws_and_pages_a_formula() {
-        let args = crate::args::parse(&["draw".to_string(), "PhCH2OH".to_string()]).unwrap();
+        let out = std::env::temp_dir().join("moiety-draws-a-formula.svg");
+        let out = out.to_str().unwrap().to_string();
+        let args =
+            crate::args::parse(&["draw".into(), "PhCH2OH".into(), "-o".into(), out]).unwrap();
         let options = Options::default();
         assert!(
             matches!(draw(&args, default_dictionary(), &options), Ok(code) if code == ExitCode::SUCCESS)
@@ -422,6 +527,89 @@ mod tests {
         assert!(
             matches!(draw(&invalid, default_dictionary(), &options), Ok(code) if code == ExitCode::FAILURE)
         );
+    }
+
+    #[test]
+    fn draws_smiles() {
+        let options = Options::default();
+        let run = |list: &[&str]| {
+            let argv: Vec<String> = list.iter().map(ToString::to_string).collect();
+            draw(
+                &crate::args::parse(&argv).unwrap(),
+                default_dictionary(),
+                &options,
+            )
+        };
+        let out = std::env::temp_dir().join("moiety-draws-smiles.svg");
+        let out = out.to_str().unwrap();
+        assert!(
+            matches!(run(&["draw", "--smiles", "c1ccccc1O", "-o", out]), Ok(code) if code == ExitCode::SUCCESS)
+        );
+        assert!(std::fs::read_to_string(out).unwrap().contains("<svg"));
+        assert!(run(&["draw", "--smiles", "C1CC"]).is_err());
+        assert!(run(&["html", "--smiles", "CCO"]).is_err());
+    }
+
+    #[test]
+    fn draws_png_files_and_text() {
+        let options = Options::default();
+        let run = |list: &[&str]| {
+            let argv: Vec<String> = list.iter().map(ToString::to_string).collect();
+            draw(
+                &crate::args::parse(&argv).unwrap(),
+                default_dictionary(),
+                &options,
+            )
+        };
+        let png = std::env::temp_dir().join("moiety-draws-png.png");
+        let png = png.to_str().unwrap();
+        assert!(matches!(run(&["draw", "PhOH", "-o", png]), Ok(code) if code == ExitCode::SUCCESS));
+        assert!(
+            std::fs::read(png)
+                .unwrap()
+                .starts_with(b"\x89PNG\r\n\x1a\n")
+        );
+        let text = std::env::temp_dir().join("moiety-draws-text.txt");
+        let text = text.to_str().unwrap();
+        assert!(run(&["draw", "CH3CH2OH", "--format", "text", "-o", text]).is_ok());
+        let drawing = std::fs::read_to_string(text).unwrap();
+        assert!(
+            drawing.contains("OH") || drawing.contains("HO"),
+            "{drawing}"
+        );
+    }
+
+    #[test]
+    fn picks_the_format_that_suits_the_output() {
+        let parse = |list: &[&str]| {
+            let argv: Vec<String> = list.iter().map(ToString::to_string).collect();
+            crate::args::parse(&argv).unwrap()
+        };
+        let kitty = |key: &str| (key == "TERM").then(|| "xterm-kitty".to_string());
+        let plain = parse(&["draw", "CO"]);
+        assert_eq!(output_format(&plain, false, kitty), Format::Svg);
+        assert_eq!(
+            output_format(&plain, true, kitty),
+            Format::Terminal(moiety_draw::terminal::Protocol::Kitty)
+        );
+        let file = parse(&["draw", "CO", "-o", "out.PNG"]);
+        assert_eq!(output_format(&file, false, kitty), Format::Png);
+        assert_eq!(
+            output_format(&parse(&["draw", "CO", "-o", "out.svg"]), false, kitty),
+            Format::Svg
+        );
+        let forced = parse(&["draw", "CO", "--format", "sixel", "-o", "out.png"]);
+        assert_eq!(
+            output_format(&forced, false, kitty),
+            Format::Terminal(moiety_draw::terminal::Protocol::Sixel)
+        );
+    }
+
+    #[test]
+    fn reads_the_terminal_width_from_columns() {
+        assert_eq!(terminal_columns(|_| Some("132".to_string())), 132);
+        let columns = terminal_columns(|_| Some("0".to_string()));
+        assert!(columns > 0);
     }
 
     #[test]

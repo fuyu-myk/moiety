@@ -3,6 +3,8 @@
 
   var input = document.getElementById("formula");
   var output = document.getElementById("output");
+  var prompt = document.querySelector(".prompt");
+  var modes = document.querySelectorAll("input[name=mode]");
   var worker = null;
   var busy = false;
   var queued = null;
@@ -25,29 +27,44 @@
     say("The playground could not start: " + reason);
   }
 
-  // One formula is read at a time; while it runs, only the latest edit waits.
-  function request(formula) {
+  function mode() {
+    var checked = document.querySelector("input[name=mode]:checked");
+    return checked ? checked.value : "formula";
+  }
+
+  // One input is read at a time; while it runs, only the latest edit waits.
+  function request(message) {
     if (worker === null) {
       return;
     }
     if (busy) {
-      queued = formula;
+      queued = message;
       return;
     }
     busy = true;
     output.setAttribute("aria-busy", "true");
-    worker.postMessage(formula);
+    worker.postMessage(message);
   }
 
   function update() {
-    var formula = input.value.trim();
-    if (formula === "") {
+    var text = input.value.trim();
+    prompt.textContent = mode() === "smiles" ? "SMILES" : "Formula";
+    if (text === "") {
       queued = null;
       output.removeAttribute("aria-busy");
-      say("Type a formula to read it.");
+      say(mode() === "smiles" ? "Type a SMILES string to draw it." : "Type a formula to read it.");
       return;
     }
-    request(formula);
+    request({ input: text, mode: mode() });
+  }
+
+  function choose(value, text) {
+    Array.prototype.forEach.call(modes, function (radio) {
+      radio.checked = radio.value === value;
+    });
+    input.value = text;
+    update();
+    input.focus();
   }
 
   function receive(event) {
@@ -60,7 +77,7 @@
     } else {
       output.removeAttribute("aria-busy");
     }
-    if (reply.formula !== input.value.trim()) {
+    if (reply.input !== input.value.trim() || reply.mode !== mode()) {
       return;
     }
     if (reply.error) {
@@ -81,11 +98,16 @@
   }
 
   input.addEventListener("input", update);
+  Array.prototype.forEach.call(modes, function (radio) {
+    radio.addEventListener("change", update);
+  });
   Array.prototype.forEach.call(document.querySelectorAll(".examples button"), function (button) {
     button.addEventListener("click", function () {
-      input.value = button.textContent;
-      update();
-      input.focus();
+      if (button.dataset.smiles) {
+        choose("smiles", button.dataset.smiles);
+      } else {
+        choose("formula", button.textContent);
+      }
     });
   });
   if (worker !== null) {

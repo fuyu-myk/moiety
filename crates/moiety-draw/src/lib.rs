@@ -1,14 +1,17 @@
 //! moiety-draw turns the molecular graphs that moiety reads into skeletal
 //! (line-angle) structure drawings.
 //!
-//! Three layers build on each other:
+//! Its layers build on each other:
 //!
-//! - [`layout`](mod@layout) places every atom in the plane, one unit per bond, with
+//! - [`layout`](mod@layout) places every atom in the plane, about one unit per bond, with
 //!   zig-zag chains, regular-polygon rings, evenly spaced branches around a hub
 //!   such as the phosphorus of `PPh3`, and components side by side.
 //! - [`svg`] draws a layout as a self-contained SVG in the usual skeletal
 //!   conventions. Drawn from a [`Reading`](moiety_core::Reading), every atom
 //!   and bond carries the byte span of the input it came from.
+//! - [`raster`] paints the same drawing into pixels, for PNG files, and
+//!   [`terminal`] shows it in a terminal, as an image over the Kitty, iTerm2 or
+//!   Sixel protocol or as Unicode text.
 //! - [`html`] puts the formula and the drawings of all its readings on one
 //!   page, where pointing at a character highlights the atoms and bonds it
 //!   produced, and pointing at an atom or bond highlights its characters.
@@ -28,10 +31,14 @@
 mod graph;
 pub mod html;
 pub mod layout;
+pub mod raster;
 mod rings;
 pub mod svg;
+pub mod terminal;
+mod wedge;
 mod xml;
 
-pub use html::{render_fragment, render_html};
+pub use html::{render_fragment, render_html, render_smiles_fragment};
 pub use layout::{Layout, Point, layout};
+pub use raster::{Image, RasterOptions, render_image, render_png};
 pub use svg::{SvgOptions, render_reading_svg, render_svg};

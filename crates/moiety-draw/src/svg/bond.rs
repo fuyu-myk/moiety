@@ -3,8 +3,10 @@
 use moiety_core::{Bond, BondOrder};
 
 use super::label::Rect;
+use super::shape::{Shape, ends};
 use super::{Scene, num};
 use crate::layout::{Bounds, EPSILON, Point};
+use crate::wedge::{Wedge, Wedged};
 use crate::xml::escape;
 
 /// Distance between the strokes of a double bond, in bond lengths.
@@ -24,6 +26,12 @@ const MIN_STROKE: f64 = 1.0;
 
 /// Radius of the circle drawn in an aromatic ring that has no Kekulé structure, relative to the ring's apothem.
 const CIRCLE_RATIO: f64 = 0.62;
+
+/// Half the width of a wedge at its wide end, in bond lengths.
+const WEDGE_HALF_WIDTH: f64 = 0.1;
+
+/// Distance between the lines of a hashed wedge, in bond lengths.
+const HASH_SPACING: f64 = 0.12;
 
 /// One stroke of a bond: the line between the atom centres moved by `offset`,
 /// cut back by `inset` pixels at each end that has no label.
@@ -55,50 +63,120 @@ pub(super) fn render(
     let bond = scene.molecule.bonds()[index];
     let (from, to) = (scene.points[bond.a], scene.points[bond.b]);
     let order = order_name(bond.order);
+    let style = match wedged(scene, index).map(|w| w.wedge) {
+        Some(Wedge::Solid) => " wedge",
+        Some(Wedge::Hashed) => " hash",
+        None => "",
+    };
     let title = format!("bond {index}: {order}, atoms {} and {}", bond.a, bond.b);
     out.push_str(&format!(
-        "<g class=\"bond {order}\" data-bond=\"{index}\"{span}><title>{}</title>",
+        "<g class=\"bond {order}{style}\" data-bond=\"{index}\"{span}><title>{}</title>",
         escape(&title)
     ));
-    if let Some(along) = (to - from).normalized() {
+    if (to - from).normalized().is_some() {
         let hit = (4.0 * scene.metrics.line).max(8.0);
         out.push_str(&format!(
             "<line class=\"hit\" {} stroke-width=\"{}\" stroke-opacity=\"0\"/>",
             ends(from, to),
             num(hit)
         ));
-        for (start, end) in stroke_ends(scene, &bond, along, &strokes(scene, &bond, along)) {
-            bounds.include(start);
-            bounds.include(end);
-            out.push_str(&format!("<line {}/>", ends(start, end)));
-        }
+    }
+    for shape in shapes(scene, index, bounds) {
+        shape.write(scene.metrics.line, out);
     }
     out.push_str("</g>");
 }
 
-/// Writes a circle inside every ring that is aromatic but has no Kekulé structure.
-pub(super) fn render_circles(scene: &Scene, out: &mut String, bounds: &mut Bounds) {
-    for &ring_index in &scene.circled_rings {
-        let ring = &scene.rings[ring_index];
-        let centre = scene.ring_centres[ring_index];
-        let apothem = ring
-            .iter()
-            .enumerate()
-            .map(|(i, &atom)| {
-                let next = ring[(i + 1) % ring.len()];
-                ((scene.points[atom] + scene.points[next]) * 0.5).distance(centre)
-            })
-            .sum::<f64>()
-            / ring.len() as f64;
-        let radius = CIRCLE_RATIO * apothem;
-        bounds.include_box(centre, radius, radius);
-        out.push_str(&format!(
-            "<circle class=\"aromatic-ring\" cx=\"{}\" cy=\"{}\" r=\"{}\"/>",
-            num(centre.x),
-            num(centre.y),
-            num(radius)
-        ));
+/// The wedge or hash drawn for bond `index`, if it is a single bond that shows a stereocentre.
+fn wedged(scene: &Scene, index: usize) -> Option<Wedged> {
+    let bond = scene.molecule.bonds()[index];
+    scene.wedges[index].filter(|_| bond.order == BondOrder::Single)
+}
+
+/// The strokes of bond `index`, or its wedge or hash.
+pub(super) fn shapes(scene: &Scene, index: usize, bounds: &mut Bounds) -> Vec<Shape> {
+    let bond = scene.molecule.bonds()[index];
+    let (from, to) = (scene.points[bond.a], scene.points[bond.b]);
+    let Some(along) = (to - from).normalized() else {
+        return Vec::new();
+    };
+    if let Some(wedged) = wedged(scene, index) {
+        let Some(&(start, end)) = stroke_ends(scene, &bond, along, &[Stroke::CENTRE]).first()
+        else {
+            return Vec::new();
+        };
+        let (narrow, wide) = if wedged.narrow == bond.a {
+            (start, end)
+        } else {
+            (end, start)
+        };
+        return wedge_shapes(scene, wedged.wedge, narrow, wide, bounds);
     }
+    stroke_ends(scene, &bond, along, &strokes(scene, &bond, along))
+        .into_iter()
+        .map(|(start, end)| {
+            bounds.include(start);
+            bounds.include(end);
+            Shape::Line(start, end)
+        })
+        .collect()
+}
+
+/// A wedge from the point `narrow` to the end `wide`: a filled triangle, or
+/// lines across the bond that widen toward `wide`.
+fn wedge_shapes(
+    scene: &Scene,
+    wedge: Wedge,
+    narrow: Point,
+    wide: Point,
+    bounds: &mut Bounds,
+) -> Vec<Shape> {
+    let Some(along) = (wide - narrow).normalized() else {
+        return Vec::new();
+    };
+    let half = along.perpendicular() * (WEDGE_HALF_WIDTH * scene.metrics.bond);
+    bounds.include(narrow);
+    bounds.include(wide + half);
+    bounds.include(wide - half);
+    match wedge {
+        Wedge::Solid => vec![Shape::Wedge([narrow, wide + half, wide - half])],
+        Wedge::Hashed => {
+            let length = narrow.distance(wide);
+            let lines = ((length / (HASH_SPACING * scene.metrics.bond)).round() as usize).max(3);
+            let lines = (1..=lines)
+                .map(|k| {
+                    let t = k as f64 / lines as f64;
+                    let at = narrow + (wide - narrow) * t;
+                    (at + half * t, at - half * t)
+                })
+                .collect();
+            vec![Shape::Hash(lines)]
+        }
+    }
+}
+
+/// A circle inside every ring that is aromatic but has no Kekulé structure.
+pub(super) fn circles(scene: &Scene, bounds: &mut Bounds) -> Vec<Shape> {
+    scene
+        .circled_rings
+        .iter()
+        .map(|&ring_index| {
+            let ring = &scene.rings[ring_index];
+            let centre = scene.ring_centres[ring_index];
+            let apothem = ring
+                .iter()
+                .enumerate()
+                .map(|(i, &atom)| {
+                    let next = ring[(i + 1) % ring.len()];
+                    ((scene.points[atom] + scene.points[next]) * 0.5).distance(centre)
+                })
+                .sum::<f64>()
+                / ring.len() as f64;
+            let radius = CIRCLE_RATIO * apothem;
+            bounds.include_box(centre, radius, radius);
+            Shape::Ring { centre, radius }
+        })
+        .collect()
 }
 
 fn order_name(order: BondOrder) -> &'static str {
@@ -108,16 +186,6 @@ fn order_name(order: BondOrder) -> &'static str {
         BondOrder::Triple => "triple",
         BondOrder::Aromatic => "aromatic",
     }
-}
-
-fn ends(start: Point, end: Point) -> String {
-    format!(
-        "x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"",
-        num(start.x),
-        num(start.y),
-        num(end.x),
-        num(end.y)
-    )
 }
 
 fn strokes(scene: &Scene, bond: &Bond, along: Point) -> Vec<Stroke> {

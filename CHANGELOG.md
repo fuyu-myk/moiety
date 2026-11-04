@@ -9,12 +9,27 @@ Grammar version 4.
 ### Added
 
 - Template rings take bracketed locants and locants after their substituents, as benzene does. They must fill every substituted position, with nothing before the ring: `C5H3N(2-Cl)(6-Cl)`, `C9H6N(8-OH)`, `C5H3NCl2-2,6`, `C5H3NCl-2-CH3-6` (grammar section 6.12).
+- Drawing from SMILES: `moiety draw --smiles`, `moiety_draw::render_smiles_fragment`, the wasm export `moiety_render_smiles`, and a Formula/SMILES switch in the playground with SMILES examples.
+- The SMILES reader keeps stereochemistry: tetrahedral centres written `@`, `@@`, `@TH1` or `@TH2`, and double bond configurations from bonds written `/` and `\`, as `Molecule::tetrahedral` and `Molecule::double_bond_stereo` with the new `Tetrahedral` and `DoubleBondStereo`. Canonical SMILES still leaves stereo out.
+- Drawings from SMILES show each tetrahedral stereocentre with one wedge or hash, and draw every double bond with the configuration the SMILES gave, in chains and in macrocycles.
+- A stereocentre where fused rings meet shows its hydrogen on a short wedge or hash, as steroids, penicillins and tetracyclines are usually drawn: out of the rings, or into one standing upright when the hydrogens would crowd each other. Where no direction is clear of other atoms, or the bonds are too short beside the font for the hydrogen's wedge to show, the centre wedges a ring bond as before.
+- Macrocycles of 12 to 46 atoms are drawn as closed zig-zags on a hexagonal lattice, as chemists draw them, with fused rings and the largest substituents outside and an odd ring's one irregular bond away from substituents: erythromycin, tacrolimus and rapamycin look like their usual drawings.
+- Porphyrins, the morphine skeleton, norbornanes, taxanes and artemisinin take fixed drawings from PubChem's depictions, and steroids are drawn the usual way round, ring A at the lower left and the angular methyls up, whatever order their SMILES lists the atoms in.
+- The `smiles` fuzz target.
+- Pixel and terminal drawings. `moiety draw` shows the structure in the terminal when it writes to one: as an image over the Kitty graphics protocol (Kitty, Ghostty), iTerm2's inline images (iTerm2, WezTerm) or Sixel (foot, Konsole, Windows Terminal), and as braille bonds and text labels anywhere else. `-o <file>.png` writes a PNG, and `--format` and `--theme` choose the output and the colours of images. The library gains `render_image`, `render_png`, `RasterOptions`, `Image` and the `terminal` module, with `render_terminal`, `detect` and `detect_theme`, all without new dependencies.
 
 ### Changed
+
+- `moiety draw` writes SVG to standard output only when that is not a terminal; in a terminal it shows the drawing.
+- moiety-draw's licence is `MIT AND OFL-1.1`: the glyph outlines of Inter that label pixel drawings stay under the SIL Open Font License 1.1.
 
 - A bracket that starts with a locant after a template ring now holds bracketed substituents, as it does after benzene, and a phenyl spelling in it is part of the substituent. So `C5H4N(2-OPh)` reads as 2-phenoxypyridine, and `C5H4N(4-ClPh)` is an error, as `C6H4(4-ClPh)` already was, instead of an underdetermined ring.
 - Units after a template ring whose brackets fill it, as in `C5H4N(2-Cl)CH3`, get CF0108 at the ring instead of CF0204.
 - A locant that lists a position whose atom cannot take a substituent suggests the nearest position with the same element that can: `3-MeC3H3N2` suggests `1-MeC3H3N2`, the nitrogen that holds a hydrogen.
+- Bridged ring systems are drawn without crossing bonds where the convention has none: a bridge across a ring is an arc or a shallow bow, chosen with the substituents in mind, and a system that still draws badly is started from another ring or relaxed, whichever is most legible. Bicyclo[2.2.2]octanes, quinuclidines, tropanes, artemisinin and cryptands no longer cross.
+- `layout` no longer keeps every bond one unit long: bridges may be shorter and templates follow their source, within 0.55 to 1.6.
+- An atom's hydrogens move to the other side of its symbol when they would cover a neighbouring label, so two hydroxyls side by side read `HO HO` instead of `OHHO`.
+- A substituent on a ring atom whose angles are nearly even, such as the methyl at a steroid's ring fusion or the hydroxyl of a decalol, takes the angle that no ring fills instead of one inside a ring.
 
 ## 0.5.0 - 2026-11-03
 

@@ -16,9 +16,14 @@
 <span class="badge">playground</span>
 <a href="https://github.com/fuyu-myk/moiety">Source on GitHub</a>
 </header>
-<p class="intro">Type a condensed formula. moiety draws every possible structure and ranks them best first. Unreadable formulas are flagged.</p>
+<p class="intro">Type a condensed formula. moiety draws every possible structure and ranks them best first. Unreadable formulas are flagged. Switch to SMILES to draw any molecule.</p>
+<fieldset class="mode">
+<legend>Input</legend>
+<label><input type="radio" name="mode" value="formula" checked> Formula</label>
+<label><input type="radio" name="mode" value="smiles"> SMILES</label>
+</fieldset>
 <label class="prompt" for="formula">Formula</label>
-<input id="formula" type="text" value="COCl2" maxlength="200" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">
+<input id="formula" type="text" value="COCl2" maxlength="256" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">
 <p class="examples">
 <span>Try</span>
 <button type="button">CH3CH2OH</button>
@@ -35,6 +40,15 @@
 <button type="button">CuSO4·5H2O</button>
 <button type="button">C6H12O6</button>
 <button type="button">CH3CH3OH</button>
+</p>
+<p class="examples">
+<span>Try SMILES</span>
+<button type="button" data-smiles="CC1CCC2CC(C(=CC=CC=CC(CC(C(=O)C(C(C(=CC(C(=O)CC(OC(=O)C3CCCCN3C(=O)C(=O)C1(O2)O)C(C)CC4CCC(C(C4)OC)O)C)C)O)OC)C)C)C)OC">rapamycin</button>
+<button type="button" data-smiles="CCC1C(C(C(C(=O)C(CC(C(C(C(C(C(=O)O1)C)OC2CC(C(C(O2)C)O)(C)OC)C)OC3C(C(CC(O3)C)N(C)C)O)(C)O)C)C)O)(C)O">erythromycin</button>
+<button type="button" data-smiles="CN1CCC23C4C1CC5=C2C(=C(C=C5)O)OC3C(C=C4)O">morphine</button>
+<button type="button" data-smiles="COc1ccc2nccc(C(O)C3CC4CCN3CC4C=C)c2c1">quinine</button>
+<button type="button" data-smiles="C1=CC2=CC3=CC=C(N3)C=C4C=CC(=N4)C=C5C=CC(=N5)C=C1N2">porphine</button>
+<button type="button" data-smiles="CC1(C)C2CCC1(C)C(=O)C2">camphor</button>
 </p>
 <div id="output" class="output"><p class="summary">Loading moiety.</p></div>
 </main>
